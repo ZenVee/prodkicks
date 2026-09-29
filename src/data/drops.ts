@@ -1,0 +1,38 @@
+import type { Drop } from '@/types';
+
+export const mockDrops: Drop[] = [
+  {
+    id: 'd1',
+    name: 'After Hours',
+    dropNumber: 26,
+    collectionId: 'c1',
+    releaseDate: '2026-09-15',
+    releaseTime: '8:00 PM',
+    campaignHeadline: 'AFTER',
+    campaignSubtitle: 'HOURS.',
+    campaignDescription: 'The night is the canvas. After Hours is our fall/winter campaign — a study in shadow, form, and the hours when the city goes quiet.',
+    heroImage: 'https://images.pexels.com/photos/13873170/pexels-photo-13873170.jpeg?auto=compress&cs=tinysrgb&h=650&w=940',
+    heroLabel: 'DROP 026',
+    showCountdown: false,
+    featuredOnHomepage: true,
+    status: 'active',
+    season: 'FALL / WINTER 26',
+  },
+  {
+    id: 'd2',
+    name: 'No Signal',
+    dropNumber: 27,
+    collectionId: 'c2',
+    releaseDate: '2026-09-27',
+    releaseTime: '8:00 PM',
+    campaignHeadline: 'NO',
+    campaignSubtitle: 'SIGNAL.',
+    campaignDescription: 'Disconnected by design. The next chapter from Prod Kicks explores the space between transmission and silence. Coming this fall.',
+    heroImage: 'https://images.pexels.com/photos/18462142/pexels-photo-18462142.jpeg?auto=compress&cs=tinysrgb&h=650&w=940',
+    heroLabel: 'DROP 027',
+    showCountdown: true,
+    featuredOnHomepage: true,
+    status: 'upcoming',
+    season: 'FALL / WINTER 26',
+  },
+];
