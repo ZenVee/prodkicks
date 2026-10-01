@@ -1,18 +1,42 @@
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { isSupabaseConfigured } from '@/lib/supabase';
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { signInWithDiscord, isAuthenticated, isApproved, account, loading } = useAuth();
+  const [error, setError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+
+  useEffect(() => {
+    if (loading || !isAuthenticated) return;
+    if (!account || account.status == null) {
+      navigate('/profile-setup', { replace: true });
+    } else if (isApproved) {
+      navigate('/portal', { replace: true });
+    } else {
+      navigate('/', { replace: true });
+    }
+  }, [loading, isAuthenticated, isApproved, account, navigate]);
 
   const handleLogin = async () => {
-    await login();
-    navigate('/portal');
+    setError(null);
+    if (!isSupabaseConfigured) {
+      setError('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY.');
+      return;
+    }
+    setStarting(true);
+    try {
+      await signInWithDiscord();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not start Discord sign-in.');
+      setStarting(false);
+    }
   };
 
   return (
     <div className="min-h-screen relative flex items-center justify-center overflow-hidden bg-ink">
-      {/* Background image */}
       <div className="absolute inset-0">
         <img
           src="https://images.pexels.com/photos/13873170/pexels-photo-13873170.jpeg?auto=compress&cs=tinysrgb&h=1200&w=800"
@@ -23,25 +47,20 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-gradient-to-b from-ink/50 via-ink/60 to-ink" />
       </div>
 
-      {/* Giant background text */}
       <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden">
         <p className="font-display text-[35vw] leading-none text-white/[0.015] whitespace-nowrap tracking-tighter select-none">
           PROD.
         </p>
       </div>
 
-      {/* Login panel */}
       <div className="relative z-10 w-full max-w-md mx-4">
         <div className="bg-ink-surface/90 backdrop-blur-md border border-white/10 p-8 lg:p-12 animate-scale-in">
-          {/* Logo */}
           <div className="text-center mb-8">
             <div className="inline-flex items-baseline gap-1.5">
               <span className="font-display text-2xl tracking-tight text-bone">PROD KICKS</span>
-              <span className="text-lime text-xs font-mono">®</span>
             </div>
           </div>
 
-          {/* Title */}
           <h1 className="font-display text-3xl lg:text-4xl tracking-tighter text-bone text-center">
             EMPLOYEE PORTAL
           </h1>
@@ -49,25 +68,24 @@ export default function LoginPage() {
             Authorized staff only.
           </p>
 
-          {/* Divider */}
           <div className="my-8 h-px bg-white/5" />
 
-          {/* Discord button */}
           <button
             onClick={handleLogin}
-            className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-[#5865F2] hover:bg-[#4752C4] text-white font-medium text-sm tracking-wider uppercase transition-colors"
+            disabled={starting}
+            className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-[#5865F2] hover:bg-[#4752C4] text-white font-medium text-sm tracking-wider uppercase transition-colors disabled:opacity-60"
           >
             <DiscordIcon className="w-5 h-5" />
-            Continue with Discord
+            {starting ? 'Redirecting...' : 'Continue with Discord'}
           </button>
 
-          {/* Footer */}
+          {error && <p className="mt-4 text-center text-sm text-red-400">{error}</p>}
+
           <p className="mt-8 text-center text-[10px] tracking-widest2 uppercase text-bone-muted/50 font-mono">
             Internal Use Only
           </p>
         </div>
 
-        {/* Back link */}
         <div className="mt-6 text-center">
           <button
             onClick={() => navigate('/')}

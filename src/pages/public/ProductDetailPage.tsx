@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Check } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import type { Product } from '@/types';
 import { productService } from '@/services/productService';
 import { formatPrice } from '@/utils/format';
 import ProductCard from '@/components/products/ProductCard';
+import { useSiteSettings } from '@/hooks/useSiteSettings';
 
 const availabilityLabels: Record<string, string> = {
   'available': 'AVAILABLE',
@@ -15,6 +16,7 @@ const availabilityLabels: Record<string, string> = {
 
 export default function ProductDetailPage() {
   const { slug } = useParams<{ slug: string }>();
+  const { settings } = useSiteSettings();
   const [product, setProduct] = useState<Product | null>(null);
   const [related, setRelated] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,7 +79,7 @@ export default function ProductDetailPage() {
               <img
                 src={product.images[activeImage] ?? product.images[0]}
                 alt={product.name}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain"
               />
             </div>
             {product.images.length > 1 && (
@@ -86,11 +88,11 @@ export default function ProductDetailPage() {
                   <button
                     key={i}
                     onClick={() => setActiveImage(i)}
-                    className={`relative w-20 h-24 overflow-hidden border transition-colors ${
+                    className={`relative w-20 h-24 overflow-hidden bg-ink-raised border transition-colors ${
                       activeImage === i ? 'border-lime' : 'border-white/5 hover:border-white/20'
                     }`}
                   >
-                    <img src={img} alt={`${product.name} ${i + 1}`} className="w-full h-full object-cover" />
+                    <img src={img} alt={`${product.name} ${i + 1}`} className="w-full h-full object-contain" />
                   </button>
                 ))}
               </div>
@@ -119,7 +121,7 @@ export default function ProductDetailPage() {
 
             {/* Price */}
             <p className="mt-6 font-display text-3xl lg:text-4xl text-lime">
-              {formatPrice(product.price, product.currency)}
+              {formatPrice(product.price, settings.currencySymbol || product.currency)}
             </p>
 
             {/* Availability */}

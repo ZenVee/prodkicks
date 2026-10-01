@@ -1,0 +1,1219 @@
+# PROD KICKS: SUPABASE AUTHENTICATION, STAFF APPROVAL & RBAC SYSTEM
+
+Implement the complete authentication, staff approval, role, and permission system for the existing Prod Kicks application.
+
+The frontend already exists.
+
+We're using the supabase cloud for authentication and database
+
+Do not redesign the application. Integrate this system into the existing frontend and follow the existing project's component patterns, styling, routing, and architecture.
+
+Security must be enforced by Supabase/PostgreSQL. Hiding buttons or routes in React is only for UX and must never be treated as authorization.
+
+---
+
+# CORE REQUIREMENTS
+
+Prod Kicks does NOT have normal customer/member accounts.
+
+Authentication exists exclusively for employees/staff.
+
+Users authenticate through Discord.
+
+A newly authenticated Discord user must NOT automatically receive staff access.
+
+The lifecycle is:
+
+Discord OAuth
+→ Profile Setup
+→ Pending Approval
+→ Approved + Assigned Role
+→ Employee Portal Access
+
+Users who authenticate but never complete profile setup should NOT appear in the approval queue.
+
+---
+
+# ACCOUNT STATES
+
+Support the following account states:
+
+- NULL = profile setup has not been completed
+- pending = profile submitted and awaiting approval
+- approved = approved employee
+- declined = request was declined
+- disabled = previously approved employee whose access has been revoked
+
+Do not give pending, declined, disabled, or incomplete accounts access to protected employee functionality.
+
+---
+
+# ROLES
+
+Create these roles:
+
+- developer
+- owner
+- manager
+- staff
+
+Use a PostgreSQL enum if appropriate.
+
+## Developer
+
+Developer is a special super-admin role.
+
+Developer:
+
+- Automatically has every permission.
+- Does NOT depend on role_permissions.
+- Cannot be assigned through the application.
+- Can only be assigned manually through the database/Supabase dashboard.
+- Cannot have their role changed through the application.
+- Cannot be disabled through the application.
+- Cannot be deleted through the application.
+- Should never appear as an option in any role assignment dropdown.
+
+Developer can:
+
+- Approve Staff
+- Approve Manager
+- Approve Owner
+- Change non-developer roles
+- Configure permissions for Owner, Manager and Staff
+- Perform every protected application action
+
+Do not create a frontend mechanism that can grant Developer.
+
+---
+
+# ROLE HIERARCHY
+
+Role hierarchy and feature permissions are separate concepts.
+
+Role hierarchy controls which roles someone may assign.
+
+Implement this hierarchy:
+
+Developer:
+- Can assign Owner
+- Can assign Manager
+- Can assign Staff
+
+Owner:
+- Can assign Manager
+- Can assign Staff
+
+Manager:
+- Can assign Staff
+
+Staff:
+- Cannot assign roles
+
+Nobody can assign Developer through the application.
+
+Enforce this hierarchy server-side/database-side.
+
+Do not rely only on filtering dropdown options in React.
+
+---
+
+# ROLE PERMISSIONS
+
+Owner, Manager, and Staff must use configurable permissions.
+
+Developer bypasses this system and automatically passes every permission check.
+
+Create:
+
+`permissions`
+
+and:
+
+`role_permissions`
+
+tables.
+
+Suggested permissions:
+
+products.view
+products.create
+products.edit
+products.delete
+products.publish
+
+collections.view
+collections.create
+collections.edit
+collections.delete
+
+drops.view
+drops.create
+drops.edit
+drops.delete
+drops.publish
+
+team.view
+team.create
+team.edit
+team.delete
+
+homepage.view
+homepage.edit
+
+settings.view
+settings.edit
+
+accounts.view
+accounts.approve
+accounts.decline
+accounts.disable
+
+permissions.view
+permissions.manage
+
+Add additional permissions if existing portal functionality requires them.
+
+Use:
+
+`resource.action`
+
+format consistently.
+
+---
+
+# DATABASE TABLE: staff_accounts
+
+Create a staff account/profile table connected 1:1 with Supabase `auth.users`.
+
+Suggested structure:
+
+- id UUID PRIMARY KEY references auth.users(id)
+- discord_id TEXT UNIQUE
+- discord_username TEXT
+- discord_avatar_url TEXT
+- full_name TEXT
+- state_id TEXT UNIQUE
+- status account_status nullable
+- role staff_role nullable
+- profile_completed_at TIMESTAMPTZ
+- approved_at TIMESTAMPTZ
+- approved_by UUID nullable
+- created_at TIMESTAMPTZ
+- updated_at TIMESTAMPTZ
+
+Do not store State ID as an integer. Store it as text.
+
+New accounts should initially have:
+
+full_name = NULL
+state_id = NULL
+status = NULL
+role = NULL
+
+---
+
+# DISCORD OAUTH
+
+Configure the application to authenticate with Discord using Supabase Auth.
+
+Use:
+
+`supabase.auth.signInWithOAuth()`
+
+with the Discord provider.
+
+Use the correct redirect URL for the application.
+
+After OAuth returns, determine the user's staff account state and route appropriately.
+
+Extract useful Discord metadata from the authenticated Supabase user, such as:
+
+- Discord user ID
+- Username/display username
+- Avatar
+
+Do not use Discord username as the authorization identity.
+
+The Supabase auth UUID is the primary application identity.
+
+Discord usernames can change.
+
+---
+
+# AUTOMATIC STAFF ACCOUNT CREATION
+
+When a new Supabase auth user is created through Discord, automatically create their corresponding `staff_accounts` record.
+
+Prefer a secure database trigger on `auth.users`.
+
+Populate available Discord metadata.
+
+Do NOT set:
+
+- role
+- status
+- full_name
+- state_id
+
+at this stage.
+
+The account is incomplete until profile setup is submitted.
+
+Make the trigger safe against duplicate execution.
+
+---
+
+# POST-LOGIN ROUTING
+
+After Discord authentication, determine the account state.
+
+Implement routing similar to:
+
+IF no completed profile:
+→ `/profile-setup`
+
+IF status = pending:
+→ `/`
+
+IF status = approved:
+→ allow portal access
+
+IF status = declined:
+→ `/`
+
+IF status = disabled:
+→ `/`
+
+Approved users visiting `/portal` may continue.
+
+Any non-approved user attempting to manually visit `/portal` or any `/portal/*` route must be blocked.
+
+Do not depend solely on client routing for actual authorization.
+
+---
+
+# PROFILE SETUP PAGE
+
+Create/integrate:
+
+`/profile-setup`
+
+This page is shown after the user's first Discord authentication.
+
+Display their connected Discord account information as read-only:
+
+- Discord avatar
+- Discord username
+
+Require:
+
+## Full Name
+
+Required.
+
+Trim whitespace.
+
+Use reasonable length validation.
+
+## State ID
+
+Required.
+
+State ID should accept digits only unless the existing application already specifies another State ID format.
+
+Store it as text.
+
+State ID must be unique.
+
+Button:
+
+`REQUEST ACCESS`
+
+Also provide:
+
+`SIGN OUT`
+
+Do not allow the user to select a role.
+
+Do not allow them to select permissions.
+
+---
+
+# PROFILE SUBMISSION
+
+Do NOT allow arbitrary direct client updates to sensitive fields in `staff_accounts`.
+
+Create a secure PostgreSQL function/RPC such as:
+
+`submit_staff_profile(full_name, state_id)`
+
+It must use the currently authenticated `auth.uid()`.
+
+Do not accept a user UUID from the browser for this operation.
+
+The function should:
+
+1. Confirm the caller is authenticated.
+2. Confirm their staff account exists.
+3. Confirm they are allowed to complete profile setup.
+4. Validate Full Name.
+5. Validate State ID.
+6. Confirm State ID is not already assigned to another account.
+7. Save Full Name.
+8. Save State ID.
+9. Set `profile_completed_at = now()`.
+10. Set `status = 'pending'`.
+11. Keep `role = NULL`.
+12. Update `updated_at`.
+
+Do not allow profile submission to assign a role.
+
+After successful submission:
+
+→ redirect to `/`
+
+They should now appear in the approval queue.
+
+---
+
+# HOMEPAGE AUTHENTICATION STATE
+
+Integrate authentication with the existing Staff Login area.
+
+Logged out:
+
+`STAFF LOGIN`
+
+Incomplete profile:
+
+`COMPLETE PROFILE`
+
+Pending:
+
+`ACCESS PENDING`
+
+Approved:
+
+Show employee avatar/account menu.
+
+Declined:
+
+Show authenticated account state but no portal access.
+
+Disabled:
+
+Show authenticated account state but no portal access.
+
+For Pending, provide a small dropdown/popover explaining:
+
+`Your employee access request is currently being reviewed.`
+
+Include:
+
+- Discord account
+- Sign Out
+
+For Declined, explain that the access request was not approved.
+
+For Disabled, explain that employee portal access is disabled.
+
+Do not expose internal role/permission controls to these users.
+
+---
+
+# AUTH CONTEXT
+
+Create or update a centralized authentication context/hook.
+
+It should expose something similar to:
+
+```ts
+{
+  user,
+  account,
+  role,
+  permissions,
+  loading,
+  isAuthenticated,
+  isApproved,
+  isDeveloper,
+  hasPermission,
+  signInWithDiscord,
+  signOut,
+  refreshAccount
+}
+```
+
+`hasPermission(permission)` should:
+
+1. Return false if account is not approved.
+2. Return true for every valid permission if role = developer.
+3. Otherwise check the user's loaded role permissions.
+
+Keep this API clean so components do not implement their own permission logic.
+
+---
+
+# PROTECTED ROUTES
+
+Create reusable route guards.
+
+Examples:
+
+`RequireAuth`
+
+`RequireApproved`
+
+`RequirePermission`
+
+Expected behavior:
+
+`RequireAuth`
+→ requires Supabase authentication.
+
+`RequireApproved`
+→ requires status = approved.
+
+`RequirePermission("products.create")`
+→ requires the appropriate permission.
+
+Developer automatically passes permission checks.
+
+Use loading states while Supabase session/account information is being resolved.
+
+Do not briefly render protected content before authorization state is known.
+
+---
+
+# DATABASE PERMISSION FUNCTION
+
+Create a secure database helper similar to:
+
+`has_permission(requested_permission TEXT)`
+
+It must use:
+
+`auth.uid()`
+
+internally.
+
+Expected logic:
+
+1. Find caller's staff account.
+2. Require status = approved.
+3. If role = developer → TRUE.
+4. Otherwise check role_permissions.
+5. Return TRUE/FALSE.
+
+Use an appropriate `SECURITY DEFINER` configuration if needed.
+
+Explicitly set a safe `search_path`.
+
+Do not expose an implementation that allows callers to check permissions as an arbitrary UUID and then use that as authorization.
+
+---
+
+# RLS
+
+Enable Row Level Security on protected application tables.
+
+Update existing tables where necessary.
+
+Protected mutations must use permission checks.
+
+Example:
+
+Products SELECT:
+`products.view`
+
+Products INSERT:
+`products.create`
+
+Products UPDATE:
+`products.edit`
+
+Products DELETE:
+`products.delete`
+
+Publishing:
+`products.publish`
+
+Apply the same concept to:
+
+- products
+- collections
+- drops
+- team/staff content
+- homepage content
+- site settings
+- other existing portal-managed data
+
+Do not assume that because `/portal` is protected the database is protected.
+
+RLS is required.
+
+---
+
+# PUBLIC DATA
+
+The public website still needs to display published information without employee authentication.
+
+Configure RLS accordingly.
+
+For example:
+
+Public users may read:
+- Published products
+- Public collections
+- Public/active drops
+- Public team members
+- Public homepage content
+- Required public site settings
+
+Public users must NOT be able to:
+
+- Create
+- Edit
+- Delete
+- Publish
+- View private/draft/internal records
+
+Be careful not to require `products.view` for public published products if that would break the public catalog.
+
+Create separate public read policies where appropriate.
+
+---
+
+# APPROVAL QUEUE
+
+Add an Employee Portal page for access requests.
+
+Suggested route:
+
+`/portal/access`
+
+Only users with:
+
+`accounts.view`
+
+may view the page.
+
+Display pending requests with:
+
+- Discord avatar
+- Discord username
+- Full Name
+- State ID
+- Date/time submitted
+
+Provide:
+
+- Approve
+- Decline
+
+When approving, require an assignable role.
+
+Available roles shown in the frontend must follow hierarchy.
+
+Developer sees:
+
+- Owner
+- Manager
+- Staff
+
+Owner sees:
+
+- Manager
+- Staff
+
+Manager sees:
+
+- Staff
+
+Staff sees no role assignment interface.
+
+Again, enforce this server-side as well.
+
+---
+
+# APPROVAL RPC
+
+Create a secure RPC/function such as:
+
+`approve_staff_account(target_user_id, assigned_role)`
+
+It should:
+
+1. Use auth.uid() to identify the actor.
+2. Confirm actor is approved.
+3. Confirm actor is authorized to approve accounts.
+4. Confirm target status = pending.
+5. Confirm requested role is allowed under hierarchy.
+6. Explicitly reject `developer`.
+7. Set target role.
+8. Set status = approved.
+9. Set approved_at.
+10. Set approved_by.
+11. Update updated_at.
+
+Do not allow the frontend to directly update these sensitive fields.
+
+---
+
+# DECLINE RPC
+
+Create:
+
+`decline_staff_account(target_user_id)`
+
+Require appropriate account permission.
+
+Set:
+
+status = declined
+role = NULL
+
+Do not delete the Supabase Auth user.
+
+---
+
+# DISABLE ACCESS
+
+Create:
+
+`disable_staff_account(target_user_id)`
+
+Rules:
+
+- Requires appropriate permission.
+- Cannot disable Developer.
+- Actor cannot use this to bypass hierarchy restrictions.
+- Set status = disabled.
+- Remove portal access immediately.
+
+Decide carefully if role should remain recorded when disabled.
+
+Preferred behavior:
+
+Keep the role stored so the previous role remains visible administratively, but `status != approved` must make all permission checks return false.
+
+---
+
+# RE-ENABLE ACCESS
+
+Implement a secure re-enable action for disabled accounts.
+
+Only an authorized actor may perform it.
+
+Re-enabling should return:
+
+status = approved
+
+and preserve the assigned role unless an authorized administrator changes it.
+
+Never allow this operation to modify a Developer account.
+
+---
+
+# ROLE CHANGES
+
+Create a secure function:
+
+`change_staff_role(target_user_id, new_role)`
+
+Enforce hierarchy.
+
+Rules:
+
+Developer:
+→ Owner / Manager / Staff
+
+Owner:
+→ Manager / Staff
+
+Manager:
+→ Staff only where appropriate
+
+Staff:
+→ cannot change roles
+
+Never allow:
+
+`new_role = developer`
+
+Never allow an application operation to modify an existing Developer's role.
+
+Do not allow users to change their own role.
+
+Consider hierarchy carefully when demoting/promoting users so an Owner cannot manipulate another Owner or Developer unless explicitly permitted by the hierarchy.
+
+---
+
+# PERMISSION MANAGEMENT
+
+Create a portal page:
+
+`/portal/permissions`
+
+Require:
+
+`permissions.view`
+
+Users with:
+
+`permissions.manage`
+
+may modify role permissions.
+
+Display a matrix similar to:
+
+| Permission | Staff | Manager | Owner |
+|---|---|---|---|
+| products.view | ✓ | ✓ | ✓ |
+| products.create | ✓ | ✓ | ✓ |
+| products.edit | ✓ | ✓ | ✓ |
+| products.delete | ✕ | ✓ | ✓ |
+| products.publish | ✕ | ✓ | ✓ |
+
+Group permissions by category.
+
+Do NOT display Developer as an editable permission column.
+
+Developer automatically has all permissions.
+
+Protect changes with a secure RPC or appropriate RLS.
+
+Do not let someone use permission management to grant themselves capabilities they are not authorized to administer if that would create a privilege escalation path.
+
+At minimum, only Developer should initially receive `permissions.manage`.
+
+Seed the initial configuration accordingly.
+
+---
+
+# INITIAL PERMISSION SEEDING
+
+Create a sensible SQL seed/migration for initial permissions.
+
+Suggested initial behavior:
+
+## Staff
+
+Allow basic operational product/catalog work as appropriate.
+
+## Manager
+
+Allow broader management capabilities.
+
+## Owner
+
+Allow most business management capabilities.
+
+## Developer
+
+Do not create role_permission rows.
+
+Developer bypasses permission lookup.
+
+IMPORTANT:
+
+Do not assume these initial permissions are permanent.
+
+The entire purpose of the system is that Owner, Manager, and Staff permissions can later be adjusted.
+
+---
+
+# DEVELOPER BOOTSTRAP
+
+Because Developer cannot be assigned through the application, document exactly how I can manually promote my initial account.
+
+For example, provide a SQL statement that I can execute manually in the Supabase SQL Editor after authenticating through Discord and completing my profile.
+
+It should be similar in concept to:
+
+```sql
+update public.staff_accounts
+set
+  role = 'developer',
+  status = 'approved',
+  approved_at = now()
+where id = 'MY-SUPABASE-USER-UUID';
+```
+
+Do not create any public API/RPC/frontend button for this.
+
+---
+
+# AUDIT LOG
+
+Add an administrative audit log.
+
+Create a table similar to:
+
+`staff_audit_log`
+
+Track sensitive staff/access actions such as:
+
+- profile submitted
+- account approved
+- account declined
+- account disabled
+- account re-enabled
+- role changed
+- permissions changed
+
+Store:
+
+- id
+- actor_user_id
+- target_user_id when applicable
+- action
+- metadata JSONB
+- created_at
+
+Do NOT store secrets, OAuth tokens, or sensitive authentication credentials in metadata.
+
+Users should not be able to modify or delete audit records through the normal frontend.
+
+Developer should be able to view the audit log.
+
+Optionally create:
+
+`audit.view`
+
+for future configurable access.
+
+---
+
+# DISCORD DATA
+
+Use Discord only for authentication identity/profile information.
+
+Do not store OAuth access tokens in public tables.
+
+Do not expose provider tokens to application users unnecessarily.
+
+Use Supabase's supported OAuth flow.
+
+Store only the Discord information needed by Prod Kicks, such as:
+
+- Discord ID
+- Username
+- Avatar URL
+
+---
+
+# SESSION / AUTH HANDLING
+
+Use Supabase's normal session management.
+
+Handle:
+
+- Initial session loading
+- OAuth callback
+- Auth state changes
+- Sign out
+- Expired sessions
+- Account state changes
+
+If an administrator disables an employee while they are logged in, their next protected database operation must immediately fail because database authorization checks `status = approved`.
+
+The frontend should refresh account state appropriately and redirect them out of `/portal`.
+
+Do not rely on stale role information stored only in localStorage.
+
+---
+
+# SECURITY REQUIREMENTS
+
+Treat all browser input as untrusted.
+
+Never expose the Supabase service role key in frontend code.
+
+Frontend may only use the public Supabase client configuration.
+
+Sensitive administrative operations must happen through secure PostgreSQL functions/RPCs, RLS, or a secure server environment if genuinely required.
+
+Never trust:
+
+- role supplied by frontend
+- account status supplied by frontend
+- permission list supplied by frontend
+- user UUID supplied as the acting user
+- hidden buttons
+- protected React routes
+
+Use `auth.uid()` to establish the acting user wherever possible.
+
+Prevent privilege escalation.
+
+A Staff user manually calling Supabase APIs must not be able to:
+
+- approve themselves
+- change their role
+- change their status
+- grant permissions
+- assign Developer
+- modify another employee
+- access unauthorized tables
+- modify draft/private data without permission
+
+A Manager must not be able to promote someone to Manager or Owner.
+
+An Owner must not be able to promote someone to Owner.
+
+Nobody using the application may assign Developer.
+
+---
+
+# IMPORTANT TABLE SECURITY
+
+Users should not have general UPDATE access to `staff_accounts`.
+
+Separate ordinary profile actions from administrative actions using RPCs.
+
+A user should never be able to send something like:
+
+```ts
+supabase
+  .from("staff_accounts")
+  .update({
+    role: "developer",
+    status: "approved"
+  })
+  .eq("id", user.id)
+```
+
+and have it succeed.
+
+RLS must reject this.
+
+---
+
+# DATABASE MIGRATIONS
+
+Put all schema changes into proper Supabase migrations.
+
+Include:
+
+- enums
+- tables
+- foreign keys
+- indexes
+- constraints
+- functions
+- triggers
+- RLS enablement
+- policies
+- permission seed data
+- updated_at handling where appropriate
+
+Do not make undocumented manual schema assumptions.
+
+Keep migrations reproducible.
+
+---
+
+# TYPESCRIPT TYPES
+
+Update/generate application types for the new schema.
+
+Create clear application types for:
+
+- StaffAccount
+- StaffRole
+- AccountStatus
+- Permission
+- RolePermission
+- AccessRequest
+- AuditLogEntry
+
+Avoid excessive `any`.
+
+---
+
+# USER MANAGEMENT UI
+
+Add a staff management page showing approved and disabled employees.
+
+Example columns:
+
+Employee
+Discord
+State ID
+Role
+Status
+Joined
+Actions
+
+Actions should depend on authorization:
+
+- Change Role
+- Disable
+- Re-enable
+
+Developer accounts should visually indicate:
+
+`DEVELOPER`
+
+but should not expose destructive/change-role actions.
+
+Do not expose Developer as a selectable role.
+
+---
+
+# PROFILE INFORMATION
+
+Full Name and State ID are collected before approval.
+
+Do not allow users to casually change these fields after approval unless we explicitly implement an authorized profile editing workflow later.
+
+For now, treat submitted Full Name and State ID as staff record information.
+
+---
+
+# LOADING AND ERROR STATES
+
+Handle errors cleanly.
+
+Examples:
+
+Duplicate State ID:
+
+`That State ID is already associated with another account.`
+
+Not authorized:
+
+`You don't have permission to perform this action.`
+
+Pending:
+
+`Your employee access request is currently being reviewed.`
+
+Declined:
+
+`Your employee access request was not approved.`
+
+Disabled:
+
+`Your employee portal access is currently disabled.`
+
+Session expired:
+
+Redirect appropriately and allow Discord authentication again.
+
+Do not expose raw PostgreSQL/database errors to users.
+
+Log useful development errors to the console during development.
+
+---
+
+# EXPECTED END-TO-END FLOW
+
+Test this exact scenario:
+
+1. New person clicks Staff Login.
+2. Discord OAuth opens.
+3. User authenticates.
+4. Supabase creates auth.users account.
+5. staff_accounts record is automatically created.
+6. User has no role/status.
+7. User is redirected to `/profile-setup`.
+8. User enters Full Name.
+9. User enters State ID.
+10. User submits.
+11. Secure RPC validates submission.
+12. status becomes pending.
+13. User is redirected to homepage.
+14. Homepage displays Access Pending.
+15. User cannot access `/portal`.
+16. Authorized Manager/Owner/Developer sees the request if their permissions/hierarchy allow it.
+17. Reviewer selects an allowed role.
+18. Reviewer approves.
+19. status becomes approved.
+20. role is assigned.
+21. User can now access `/portal`.
+22. Portal UI only shows features allowed by their permissions.
+23. RLS prevents unauthorized database operations even if the frontend is bypassed.
+24. Developer bypasses permission checks.
+25. Developer cannot be created through the application.
+
+Also test:
+
+- Declined account
+- Disabled account
+- Duplicate State ID
+- Manager attempting to assign Manager
+- Manager attempting to assign Owner
+- Owner attempting to assign Owner
+- Any user attempting to assign Developer
+- Staff attempting direct database mutations
+- Pending user manually navigating to portal
+- User modifying browser state to fake permissions
+- Developer access when role_permissions contains no Developer entries
+
+---
+
+# IMPLEMENTATION PROCESS
+
+Before modifying files:
+
+1. Inspect the existing project.
+2. Identify the current Supabase setup.
+3. Identify routing structure.
+4. Identify existing authentication code.
+5. Identify existing portal pages and database tables.
+6. Reuse existing architecture where sensible.
+7. Do not replace working frontend components unnecessarily.
+
+Then implement the system incrementally.
+
+Create the database migrations first.
+
+Then:
+
+1. Supabase/Discord authentication integration
+2. Staff account trigger
+3. Profile setup
+4. Authorization helpers
+5. RLS
+6. Route guards
+7. Approval queue
+8. Staff management
+9. Permission management
+10. Audit logging
+11. UI integration
+12. Testing
+
+After implementation, run:
+
+- TypeScript type checking
+- Existing linting
+- Existing tests
+- Production build
+
+Fix errors caused by the implementation.
+
+---
+
+# FINAL OUTPUT
+
+When finished, provide me with:
+
+1. Summary of what was implemented.
+2. Database migrations created.
+3. Tables created/changed.
+4. RLS policies created.
+5. PostgreSQL/RPC functions created.
+6. Routes/pages created or changed.
+7. Environment variables I need to configure.
+8. Exact Supabase Dashboard settings required for Discord OAuth.
+9. Exact Discord Developer Portal configuration required.
+10. Redirect/callback URLs I need to configure for local development and production.
+11. SQL I need to manually run to make my account the first Developer.
+12. Any steps I must manually complete.
+13. Any security assumptions or limitations.
+14. Any tests performed and their results.
+
+Do not claim the authentication system is finished if manual Supabase or Discord configuration is still required. Clearly identify those remaining steps.

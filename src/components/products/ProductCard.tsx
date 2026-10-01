@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { ArrowUpRight } from 'lucide-react';
 import type { Product, ProductBadge } from '@/types';
 import { formatPrice } from '@/utils/format';
+import { useSiteSettings } from '@/hooks/useSiteSettings';
 
 function getBadge(product: Product): ProductBadge | null {
   if (product.availability === 'sold-out') return 'SOLD OUT';
@@ -20,6 +21,8 @@ const badgeStyles: Record<ProductBadge, string> = {
 
 export default function ProductCard({ product }: { product: Product }) {
   const badge = getBadge(product);
+  const { settings } = useSiteSettings();
+  const currency = settings.currencySymbol || product.currency;
 
   return (
     <Link
@@ -27,7 +30,6 @@ export default function ProductCard({ product }: { product: Product }) {
       className="group block"
     >
       <div className="relative overflow-hidden bg-ink-surface border border-white/5 group-hover:border-lime/30 transition-colors duration-300">
-        {/* Image */}
         <div className="aspect-[4/5] overflow-hidden bg-ink-raised">
           <img
             src={product.images[0]}
@@ -37,7 +39,6 @@ export default function ProductCard({ product }: { product: Product }) {
           />
         </div>
 
-        {/* Badge */}
         {badge && (
           <div className="absolute top-3 left-3">
             <span className={`inline-block px-2.5 py-1 text-[10px] font-bold tracking-widest2 uppercase ${badgeStyles[badge]}`}>
@@ -46,7 +47,6 @@ export default function ProductCard({ product }: { product: Product }) {
           </div>
         )}
 
-        {/* Hover overlay */}
         <div className="absolute inset-0 bg-ink/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
           <span className="flex items-center gap-1.5 text-sm font-medium text-bone tracking-wider uppercase">
             View Item
@@ -55,7 +55,6 @@ export default function ProductCard({ product }: { product: Product }) {
         </div>
       </div>
 
-      {/* Info */}
       <div className="pt-3 pb-1">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
@@ -67,7 +66,7 @@ export default function ProductCard({ product }: { product: Product }) {
             </p>
           </div>
           <p className="text-sm font-medium text-lime whitespace-nowrap">
-            {formatPrice(product.price, product.currency)}
+            {formatPrice(product.price, currency)}
           </p>
         </div>
       </div>

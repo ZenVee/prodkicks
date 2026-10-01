@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import type { SiteSettings } from '@/types';
 import { settingsService } from '@/services/settingsService';
 import { useToast } from '@/hooks/useToast';
+import { useSiteSettings } from '@/hooks/useSiteSettings';
 
 export default function PortalSettings() {
   const { showToast } = useToast();
+  const { refreshSettings } = useSiteSettings();
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -14,19 +16,22 @@ export default function PortalSettings() {
 
   if (!settings) return <p className="text-sm text-bone-muted">Loading...</p>;
 
-  const update = (field: keyof SiteSettings, value: any) => {
+  const update = <K extends keyof SiteSettings>(field: K, value: SiteSettings[K]) => {
     setSettings((prev) => ({ ...prev!, [field]: value }));
-  };
-
-  const updateSocial = (key: keyof SiteSettings['socialLinks'], value: string) => {
-    setSettings((prev) => ({ ...prev!, socialLinks: { ...prev!.socialLinks, [key]: value } }));
   };
 
   const handleSave = async () => {
     setSaving(true);
-    await settingsService.updateSettings(settings);
-    showToast('Settings saved', 'success');
-    setSaving(false);
+    try {
+      const saved = await settingsService.updateSettings(settings);
+      setSettings(saved);
+      await refreshSettings();
+      showToast('Settings saved', 'success');
+    } catch {
+      showToast('Could not save settings', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -35,7 +40,6 @@ export default function PortalSettings() {
       <p className="text-sm text-bone-muted mb-8">Configure your site-wide settings.</p>
 
       <div className="space-y-6">
-        {/* Company */}
         <div className="bg-ink-surface border border-white/5 p-6">
           <h2 className="text-sm tracking-wider uppercase text-bone-muted mb-4">Company</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -62,30 +66,6 @@ export default function PortalSettings() {
           </div>
         </div>
 
-        {/* Social Links */}
-        <div className="bg-ink-surface border border-white/5 p-6">
-          <h2 className="text-sm tracking-wider uppercase text-bone-muted mb-4">Social Links</h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs tracking-wider uppercase text-bone-muted mb-1.5">Instagram</label>
-              <input type="text" value={settings.socialLinks.instagram} onChange={(e) => updateSocial('instagram', e.target.value)} className="portal-input" />
-            </div>
-            <div>
-              <label className="block text-xs tracking-wider uppercase text-bone-muted mb-1.5">Twitter</label>
-              <input type="text" value={settings.socialLinks.twitter} onChange={(e) => updateSocial('twitter', e.target.value)} className="portal-input" />
-            </div>
-            <div>
-              <label className="block text-xs tracking-wider uppercase text-bone-muted mb-1.5">YouTube</label>
-              <input type="text" value={settings.socialLinks.youtube} onChange={(e) => updateSocial('youtube', e.target.value)} className="portal-input" />
-            </div>
-            <div>
-              <label className="block text-xs tracking-wider uppercase text-bone-muted mb-1.5">Discord URL</label>
-              <input type="text" value={settings.discordUrl} onChange={(e) => update('discordUrl', e.target.value)} className="portal-input" />
-            </div>
-          </div>
-        </div>
-
-        {/* SEO */}
         <div className="bg-ink-surface border border-white/5 p-6">
           <h2 className="text-sm tracking-wider uppercase text-bone-muted mb-4">SEO</h2>
           <div className="space-y-4">
@@ -100,7 +80,6 @@ export default function PortalSettings() {
           </div>
         </div>
 
-        {/* Save */}
         <div className="flex justify-end pb-8">
           <button
             onClick={handleSave}

@@ -2,10 +2,13 @@ import { Link, useLocation } from 'react-router-dom';
 import { useEffect, useState, useRef } from 'react';
 import { Menu, X, LogOut, LayoutGrid, Eye } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useSiteSettings } from '@/hooks/useSiteSettings';
 
 export default function Header() {
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const { user, account, isApproved, loading, signOut } = useAuth();
+  const { settings } = useSiteSettings();
+  const brand = settings.companyName || 'PROD KICKS';
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
@@ -34,8 +37,33 @@ export default function Header() {
 
   const navLinks = [
     { to: '/', label: 'HOME' },
+    { to: '/magazine', label: 'MAGAZINE' },
     { to: '/staff', label: 'STAFF' },
   ];
+
+  const status = account?.status ?? null;
+  const incomplete = Boolean(user && status == null);
+  const pending = status === 'pending';
+  const declined = status === 'declined';
+  const disabled = status === 'disabled';
+
+  const statusLabel = incomplete
+    ? 'Complete Profile'
+    : pending
+      ? 'Access Pending'
+      : declined
+        ? 'Access Declined'
+        : disabled
+          ? 'Access Disabled'
+          : null;
+
+  const statusMessage = pending
+    ? 'Your employee access request is currently being reviewed.'
+    : declined
+      ? 'Your employee access request was not approved.'
+      : disabled
+        ? 'Your employee portal access is currently disabled.'
+        : null;
 
   return (
     <>
@@ -48,24 +76,17 @@ export default function Header() {
       >
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-10">
           <div className="flex items-center justify-between h-16 lg:h-20">
-            {/* Left: Logo */}
             <Link to="/" className="flex items-center gap-2 group">
               <span className="font-display text-lg lg:text-xl tracking-tight text-bone group-hover:text-lime transition-colors">
-                PROD KICKS
+                {brand.toUpperCase()}
               </span>
-              <span className="text-lime text-xs font-mono mt-0.5">®</span>
             </Link>
 
-            {/* Center: Nav */}
             <nav className="hidden md:flex items-center gap-8 lg:gap-12">
               {navLinks.map((link) => {
                 const active = location.pathname === link.to;
                 return (
-                  <Link
-                    key={link.to}
-                    to={link.to}
-                    className="group relative"
-                  >
+                  <Link key={link.to} to={link.to} className="group relative">
                     <span
                       className={`text-xs lg:text-sm font-medium tracking-widest2 uppercase transition-colors ${
                         active ? 'text-lime' : 'text-bone hover:text-lime'
@@ -83,38 +104,62 @@ export default function Header() {
               })}
             </nav>
 
-            {/* Right: Mobile menu + Staff Login */}
             <div className="flex items-center gap-3">
-              {user ? (
+              {loading ? (
+                <span className="hidden sm:block text-xs text-bone-muted font-mono">...</span>
+              ) : user ? (
                 <div className="relative" ref={avatarRef}>
-                  <button
-                    onClick={() => setAvatarOpen(!avatarOpen)}
-                    className="flex items-center gap-2 group"
-                    aria-label="Employee menu"
-                  >
-                    <img
-                      src={user.avatar}
-                      alt={user.name}
-                      className="w-8 h-8 lg:w-9 lg:h-9 rounded-full object-cover border border-white/10 group-hover:border-lime/50 transition-colors"
-                    />
-                    <span className="hidden lg:block text-xs text-bone-muted font-medium">
-                      {user.name.split(' ')[0]}
-                    </span>
-                  </button>
-                  {avatarOpen && (
-                    <div className="absolute right-0 top-full mt-2 w-56 bg-ink-surface border border-white/10 shadow-xl animate-slide-down">
+                  {incomplete ? (
+                    <Link
+                      to="/profile-setup"
+                      className="hidden sm:flex items-center gap-2 px-4 py-2 border border-white/10 hover:border-lime/50 hover:bg-lime/5 transition-all"
+                    >
+                      <span className="text-xs font-medium tracking-widest2 uppercase text-bone hover:text-lime transition-colors">
+                        Complete Profile
+                      </span>
+                    </Link>
+                  ) : (
+                    <button
+                      onClick={() => setAvatarOpen(!avatarOpen)}
+                      className="flex items-center gap-2 group"
+                      aria-label="Employee menu"
+                    >
+                      {user.avatar ? (
+                        <img
+                          src={user.avatar}
+                          alt={user.name}
+                          className="w-8 h-8 lg:w-9 lg:h-9 rounded-full object-cover border border-white/10 group-hover:border-lime/50 transition-colors"
+                        />
+                      ) : (
+                        <div className="w-8 h-8 lg:w-9 lg:h-9 rounded-full border border-white/10 bg-ink-surface" />
+                      )}
+                      <span className="hidden lg:block text-xs text-bone-muted font-medium">
+                        {statusLabel ?? user.name.split(' ')[0]}
+                      </span>
+                    </button>
+                  )}
+
+                  {avatarOpen && !incomplete && (
+                    <div className="absolute right-0 top-full mt-2 w-64 bg-ink-surface border border-white/10 shadow-xl animate-slide-down">
                       <div className="p-3 border-b border-white/5">
                         <p className="text-sm text-bone font-medium">{user.name}</p>
-                        <p className="text-xs text-bone-muted">{user.position}</p>
+                        <p className="text-xs text-bone-muted">
+                          {account?.discordUsername ? `@${account.discordUsername}` : user.position}
+                        </p>
+                        {statusMessage && (
+                          <p className="mt-2 text-xs text-bone-muted leading-relaxed">{statusMessage}</p>
+                        )}
                       </div>
                       <div className="py-1">
-                        <Link
-                          to="/portal"
-                          className="flex items-center gap-3 px-3 py-2.5 text-sm text-bone hover:bg-ink-raised hover:text-lime transition-colors"
-                        >
-                          <LayoutGrid size={15} />
-                          Employee Portal
-                        </Link>
+                        {isApproved && (
+                          <Link
+                            to="/portal"
+                            className="flex items-center gap-3 px-3 py-2.5 text-sm text-bone hover:bg-ink-raised hover:text-lime transition-colors"
+                          >
+                            <LayoutGrid size={15} />
+                            Employee Portal
+                          </Link>
+                        )}
                         <Link
                           to="/"
                           className="flex items-center gap-3 px-3 py-2.5 text-sm text-bone hover:bg-ink-raised hover:text-lime transition-colors"
@@ -123,11 +168,11 @@ export default function Header() {
                           View Website
                         </Link>
                         <button
-                          onClick={() => logout()}
+                          onClick={() => signOut()}
                           className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-bone hover:bg-ink-raised hover:text-lime transition-colors"
                         >
                           <LogOut size={15} />
-                          Logout
+                          Sign Out
                         </button>
                       </div>
                     </div>
@@ -145,7 +190,6 @@ export default function Header() {
                 </Link>
               )}
 
-              {/* Mobile menu button */}
               <button
                 onClick={() => setMobileOpen(!mobileOpen)}
                 className="md:hidden p-1.5 text-bone"
@@ -158,7 +202,6 @@ export default function Header() {
         </div>
       </header>
 
-      {/* Mobile menu */}
       {mobileOpen && (
         <div className="fixed inset-0 z-40 md:hidden bg-ink/95 backdrop-blur-md animate-fade-in pt-20">
           <nav className="flex flex-col px-6 py-8 gap-1">
@@ -186,6 +229,22 @@ export default function Header() {
                   Staff Login
                 </span>
               </Link>
+            )}
+            {incomplete && (
+              <Link
+                to="/profile-setup"
+                className="mt-8 px-4 py-3 border border-white/10 text-sm tracking-widest2 uppercase text-bone"
+              >
+                Complete Profile
+              </Link>
+            )}
+            {user && !incomplete && (
+              <button
+                onClick={() => signOut()}
+                className="mt-8 text-left px-4 py-3 text-sm tracking-widest2 uppercase text-bone-muted"
+              >
+                Sign Out
+              </button>
             )}
           </nav>
         </div>

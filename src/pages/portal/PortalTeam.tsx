@@ -1,9 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus, MoreVertical, Edit2, Trash2, X, ArrowUp, ArrowDown, Eye, EyeOff } from 'lucide-react';
-import type { StaffMember, StaffRole } from '@/types';
+import type { EmployeeRole, StaffAccount, StaffMember, StaffRole } from '@/types';
 import { staffService } from '@/services/staffService';
+import { authService, assignableRolesFor } from '@/services/authService';
+import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
 import Modal from '@/components/common/Modal';
+import { mapSupabaseError } from '@/utils/errors';
+import { formatDate } from '@/utils/format';
 
 const roleLabels: Record<StaffRole, string> = {
   owner: 'Owners',
@@ -13,7 +17,234 @@ const roleLabels: Record<StaffRole, string> = {
 
 const roleOrder: StaffRole[] = ['owner', 'management', 'staff'];
 
+type Tab = 'accounts' | 'website';
+
 export default function PortalTeam() {
+  const { role: actorRole, hasPermission } = useAuth();
+  const canAccounts = hasPermission('accounts.view');
+  const canWebsite = hasPermission('team.view');
+
+  const availableTabs = useMemo(() => {
+    const tabs: { id: Tab; label: string }[] = [];
+    if (canAccounts) tabs.push({ id: 'accounts', label: 'Accounts' });
+    if (canWebsite) tabs.push({ id: 'website', label: 'Website' });
+    return tabs;
+  }, [canAccounts, canWebsite]);
+
+  const [tab, setTab] = useState<Tab>(canAccounts ? 'accounts' : 'website');
+
+  useEffect(() => {
+    if (availableTabs.length === 0) return;
+    if (!availableTabs.some((t) => t.id === tab)) {
+      setTab(availableTabs[0].id);
+    }
+  }, [availableTabs, tab]);
+
+  if (availableTabs.length === 0) {
+    return (
+      <div className="max-w-6xl mx-auto">
+        <h1 className="font-display text-3xl lg:text-4xl tracking-tighter text-bone mb-1">Team</h1>
+        <p className="text-sm text-bone-muted">You don't have permission to view team content.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-6xl mx-auto">
+      <h1 className="font-display text-3xl lg:text-4xl tracking-tighter text-bone mb-1">Team</h1>
+      <p className="text-sm text-bone-muted mb-6">
+        Manage employee portal access and public website profiles.
+      </p>
+
+      {availableTabs.length > 1 && (
+        <div className="flex gap-1 mb-8 border-b border-white/5">
+          {availableTabs.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`px-4 py-2.5 text-xs tracking-widest2 uppercase transition-colors ${
+                tab === t.id
+                  ? 'text-lime border-b-2 border-lime -mb-px'
+                  : 'text-bone-muted hover:text-bone'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {tab === 'accounts' && canAccounts && <AccountsSection actorRole={actorRole} />}
+      {tab === 'website' && canWebsite && <WebsiteSection />}
+    </div>
+  );
+}
+
+function AccountsSection({ actorRole }: { actorRole: EmployeeRole | null }) {
+  const { hasPermission } = useAuth();
+  const { showToast } = useToast();
+  const [employees, setEmployees] = useState<StaffAccount[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const assignable = assignableRolesFor(actorRole);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      setEmployees(await authService.listEmployees());
+    } catch (err) {
+      showToast(mapSupabaseError(err).message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const canManage = (emp: StaffAccount) => {
+    if (emp.role === 'developer') return false;
+    if (actorRole === 'developer') return true;
+    if (actorRole === 'owner') return emp.role === 'manager' || emp.role === 'staff';
+    if (actorRole === 'manager') return emp.role === 'staff';
+    return false;
+  };
+
+  const roleOptionsFor = (emp: StaffAccount) => {
+    const options = [...assignable];
+    if (emp.role && emp.role !== 'developer' && !options.includes(emp.role)) {
+      options.unshift(emp.role);
+    }
+    return options;
+  };
+
+  const changeRole = async (emp: StaffAccount, next: Exclude<EmployeeRole, 'developer'>) => {
+    if (next === emp.role) return;
+    setBusyId(emp.id);
+    try {
+      await authService.changeRole(emp.id, next);
+      showToast('Role updated', 'success');
+      await load();
+    } catch (err) {
+      showToast(mapSupabaseError(err).message, 'error');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const toggleAccess = async (emp: StaffAccount) => {
+    setBusyId(emp.id);
+    try {
+      if (emp.status === 'approved') {
+        await authService.disable(emp.id);
+        showToast('Access disabled', 'info');
+      } else if (emp.status === 'disabled') {
+        await authService.enable(emp.id);
+        showToast('Access restored', 'success');
+      }
+      await load();
+    } catch (err) {
+      showToast(mapSupabaseError(err).message, 'error');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div className="bg-ink-surface border border-white/5 overflow-x-auto">
+      <table className="w-full min-w-[720px]">
+        <thead>
+          <tr className="border-b border-white/5">
+            <th className="text-left text-xs tracking-wider uppercase text-bone-muted font-medium px-4 py-3">Employee</th>
+            <th className="text-left text-xs tracking-wider uppercase text-bone-muted font-medium px-4 py-3">Discord</th>
+            <th className="text-left text-xs tracking-wider uppercase text-bone-muted font-medium px-4 py-3">State ID</th>
+            <th className="text-left text-xs tracking-wider uppercase text-bone-muted font-medium px-4 py-3">Role</th>
+            <th className="text-left text-xs tracking-wider uppercase text-bone-muted font-medium px-4 py-3">Status</th>
+            <th className="text-left text-xs tracking-wider uppercase text-bone-muted font-medium px-4 py-3">Joined</th>
+            <th className="text-right text-xs tracking-wider uppercase text-bone-muted font-medium px-4 py-3">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {loading ? (
+            <tr><td colSpan={7} className="text-center text-sm text-bone-muted py-12">Loading...</td></tr>
+          ) : employees.length === 0 ? (
+            <tr><td colSpan={7} className="text-center text-sm text-bone-muted py-12">No employees</td></tr>
+          ) : employees.map((emp) => {
+            const manageable = canManage(emp);
+            const options = roleOptionsFor(emp);
+            const busy = busyId === emp.id;
+            return (
+              <tr key={emp.id} className="border-b border-white/5">
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    {emp.discordAvatarUrl ? (
+                      <img src={emp.discordAvatarUrl} alt="" className="w-8 h-8 rounded-full object-cover" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-ink-raised" />
+                    )}
+                    <div>
+                      <p className="text-sm text-bone">{emp.fullName}</p>
+                      {emp.role === 'developer' && (
+                        <span className="text-[10px] tracking-widest2 uppercase text-lime">Developer</span>
+                      )}
+                    </div>
+                  </div>
+                </td>
+                <td className="px-4 py-3 text-xs text-bone-muted">{emp.discordUsername}</td>
+                <td className="px-4 py-3 text-xs font-mono text-bone-muted">{emp.stateId}</td>
+                <td className="px-4 py-3">
+                  {manageable && options.length > 0 ? (
+                    <select
+                      value={emp.role ?? 'staff'}
+                      disabled={busy}
+                      onChange={(e) =>
+                        void changeRole(emp, e.target.value as Exclude<EmployeeRole, 'developer'>)
+                      }
+                      className="portal-input capitalize text-xs py-1.5 min-w-[7.5rem]"
+                    >
+                      {options.map((r) => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="text-xs capitalize text-bone-muted">{emp.role ?? '—'}</span>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-xs capitalize text-bone-muted">{emp.status}</td>
+                <td className="px-4 py-3 text-xs text-bone-muted">
+                  {emp.approvedAt ? formatDate(emp.approvedAt) : '—'}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  {emp.role === 'developer' || !manageable ? (
+                    <span className="text-xs text-bone-muted/50">—</span>
+                  ) : hasPermission('accounts.disable') && (emp.status === 'approved' || emp.status === 'disabled') ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void toggleAccess(emp)}
+                      className={`px-3 py-1.5 text-xs uppercase tracking-wider transition-colors disabled:opacity-40 ${
+                        emp.status === 'approved'
+                          ? 'border border-red-500/40 text-red-400 hover:bg-red-500/10'
+                          : 'bg-lime text-ink font-medium hover:bg-lime-dark'
+                      }`}
+                    >
+                      {emp.status === 'approved' ? 'Disable' : 'Re-enable'}
+                    </button>
+                  ) : (
+                    <span className="text-xs text-bone-muted/50">—</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function WebsiteSection() {
   const { showToast } = useToast();
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,12 +296,9 @@ export default function PortalTeam() {
   }));
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="font-display text-3xl lg:text-4xl tracking-tighter text-bone">Team</h1>
-          <p className="text-sm text-bone-muted mt-1">{staff.length} team members</p>
-        </div>
+        <p className="text-sm text-bone-muted">{staff.length} website profiles</p>
         <button
           onClick={() => setCreating(true)}
           className="inline-flex items-center gap-2 px-4 py-2.5 bg-lime text-ink text-sm font-medium tracking-wider uppercase hover:bg-lime-dark transition-colors"
@@ -169,7 +397,7 @@ export default function PortalTeam() {
           Are you sure you want to remove <span className="text-bone">{deleteTarget?.name}</span> from the team?
         </p>
       </Modal>
-    </div>
+    </>
   );
 }
 
