@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/useToast';
 import Modal from '@/components/common/Modal';
 import Countdown from '@/components/common/Countdown';
 import type { Collection } from '@/types';
+import { mapSupabaseError } from '@/utils/errors';
 
 const statusTabs: { label: string; value: Drop['status'] }[] = [
   { label: 'Upcoming', value: 'upcoming' },
@@ -27,25 +28,35 @@ export default function PortalDrops() {
 
   const load = () => {
     setLoading(true);
-    dropService.getAll().then((d) => {
-      setDrops(d);
-      setLoading(false);
-    });
+    dropService
+      .getAll()
+      .then((d) => {
+        setDrops(d);
+        setLoading(false);
+      })
+      .catch((err) => {
+        showToast(mapSupabaseError(err).message, 'error');
+        setLoading(false);
+      });
   };
 
   useEffect(() => {
     load();
-    collectionService.getAll().then(setCollections);
+    collectionService.getAll().then(setCollections).catch(() => setCollections([]));
   }, []);
 
   const filtered = drops.filter((d) => d.status === tab);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    await dropService.delete(deleteTarget.id);
-    showToast(`${deleteTarget.name} deleted`, 'success');
-    setDeleteTarget(null);
-    load();
+    try {
+      await dropService.delete(deleteTarget.id);
+      showToast(`${deleteTarget.name} deleted`, 'success');
+      setDeleteTarget(null);
+      load();
+    } catch (err) {
+      showToast(mapSupabaseError(err).message, 'error');
+    }
   };
 
   return (
@@ -148,16 +159,20 @@ export default function PortalDrops() {
           collections={collections}
           onClose={() => { setEditing(null); setCreating(false); }}
           onSave={async (data) => {
-            if (editing) {
-              await dropService.update(editing.id, data);
-              showToast('Drop updated', 'success');
-            } else {
-              await dropService.create(data);
-              showToast('Drop created', 'success');
+            try {
+              if (editing) {
+                await dropService.update(editing.id, data);
+                showToast('Drop updated', 'success');
+              } else {
+                await dropService.create(data);
+                showToast('Drop created', 'success');
+              }
+              setEditing(null);
+              setCreating(false);
+              load();
+            } catch (err) {
+              showToast(mapSupabaseError(err).message, 'error');
             }
-            setEditing(null);
-            setCreating(false);
-            load();
           }}
         />
       )}

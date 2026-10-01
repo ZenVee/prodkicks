@@ -18,9 +18,8 @@ export default function CollectionPage() {
     collectionService.getBySlug(slug).then(async (col) => {
       setCollection(col);
       if (col) {
-        const all = await productService.getAll();
-        const colProducts = all.filter((p) => col.productIds.includes(p.id));
-        setProducts(colProducts);
+        const colProducts = await productService.getByCollection(col.id);
+        setProducts(colProducts.filter((p) => p.status === 'published'));
       }
       setLoading(false);
     });

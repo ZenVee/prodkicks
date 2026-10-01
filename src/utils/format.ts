@@ -37,3 +37,19 @@ export function slugify(str: string): string {
     .replace(/-+/g, '-')
     .trim();
 }
+
+/** Combine drop release date + display time (e.g. "8:00 PM") into a local Date. */
+export function dropReleaseTarget(releaseDate: string, releaseTime: string): Date {
+  const match = releaseTime.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  let hours = 20;
+  let minutes = 0;
+  if (match) {
+    hours = Number(match[1]);
+    minutes = Number(match[2]);
+    const meridiem = match[3]?.toUpperCase();
+    if (meridiem === 'PM' && hours < 12) hours += 12;
+    if (meridiem === 'AM' && hours === 12) hours = 0;
+  }
+  const [year, month, day] = releaseDate.split('-').map(Number);
+  return new Date(year, (month ?? 1) - 1, day ?? 1, hours, minutes, 0);
+}

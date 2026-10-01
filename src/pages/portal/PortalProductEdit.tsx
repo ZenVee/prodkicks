@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Upload, X, GripVertical, Eye } from 'lucide-react';
 import type { Product, ProductCategory, ProductStatus, ProductAvailability, ProductLabel, ProductVariant } from '@/types';
@@ -6,6 +6,7 @@ import { productService } from '@/services/productService';
 import { collectionService } from '@/services/collectionService';
 import { useToast } from '@/hooks/useToast';
 import { slugify } from '@/utils/format';
+import { mapSupabaseError } from '@/utils/errors';
 import type { Collection } from '@/types';
 
 const categories: ProductCategory[] = ['footwear', 'tops', 'bottoms', 'accessories'];
@@ -38,9 +39,10 @@ export default function PortalProductEdit() {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [newVariant, setNewVariant] = useState('');
   const [imageUrl, setImageUrl] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    collectionService.getActive().then(setCollections);
+    collectionService.getActive().then(setCollections).catch(() => setCollections([]));
     if (!isNew && id) {
       productService.getById(id).then((p) => {
         if (p) setProduct(p);
@@ -48,20 +50,27 @@ export default function PortalProductEdit() {
     }
   }, [id, isNew]);
 
-  const update = (field: keyof Product, value: any) => {
+  const update = (field: keyof Product, value: Product[keyof Product]) => {
     setProduct((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSave = async (publish = false) => {
-    const data = { ...product, status: publish ? 'published' : product.status };
-    if (isNew) {
-      await productService.create(data);
-      showToast(publish ? 'Product published' : 'Draft saved', 'success');
-    } else if (id) {
-      await productService.update(id, data);
-      showToast(publish ? 'Product published' : 'Changes saved', 'success');
+    const data = { ...product, status: publish ? ('published' as const) : product.status };
+    setSaving(true);
+    try {
+      if (isNew) {
+        await productService.create(data);
+        showToast(publish ? 'Product published' : 'Draft saved', 'success');
+      } else if (id) {
+        await productService.update(id, data);
+        showToast(publish ? 'Product published' : 'Changes saved', 'success');
+      }
+      navigate('/portal/products');
+    } catch (err) {
+      showToast(mapSupabaseError(err).message, 'error');
+    } finally {
+      setSaving(false);
     }
-    navigate('/portal/products');
   };
 
   const addImage = () => {
@@ -284,15 +293,17 @@ export default function PortalProductEdit() {
         <div className="flex flex-col sm:flex-row gap-3 pb-8">
           <button
             onClick={() => handleSave(false)}
-            className="flex-1 px-6 py-3 text-sm tracking-wider uppercase border border-white/10 text-bone hover:border-lime/50 transition-colors"
+            disabled={saving}
+            className="flex-1 px-6 py-3 text-sm tracking-wider uppercase border border-white/10 text-bone hover:border-lime/50 transition-colors disabled:opacity-50"
           >
-            Save Draft
+            {saving ? 'Saving...' : 'Save Draft'}
           </button>
           <button
             onClick={() => handleSave(true)}
-            className="flex-1 px-6 py-3 text-sm tracking-wider uppercase bg-lime text-ink font-medium hover:bg-lime-dark transition-colors"
+            disabled={saving}
+            className="flex-1 px-6 py-3 text-sm tracking-wider uppercase bg-lime text-ink font-medium hover:bg-lime-dark transition-colors disabled:opacity-50"
           >
-            Publish Product
+            {saving ? 'Saving...' : 'Publish Product'}
           </button>
           <Link
             to="/"
@@ -307,7 +318,7 @@ export default function PortalProductEdit() {
   );
 }
 
-function Field({ label, children, className = '' }: { label: string; children: React.ReactNode; className?: string }) {
+function Field({ label, children, className = '' }: { label: string; children: ReactNode; className?: string }) {
   return (
     <div className={className}>
       <label className="block text-xs tracking-wider uppercase text-bone-muted mb-1.5">{label}</label>

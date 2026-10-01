@@ -3,10 +3,10 @@ import { Link } from 'react-router-dom';
 import { Plus, MoreVertical, Edit2, Archive, Trash2, X } from 'lucide-react';
 import type { Collection } from '@/types';
 import { collectionService } from '@/services/collectionService';
-import { productService } from '@/services/productService';
 import { useToast } from '@/hooks/useToast';
 import Modal from '@/components/common/Modal';
 import { slugify } from '@/utils/format';
+import { mapSupabaseError } from '@/utils/errors';
 
 export default function PortalCollections() {
   const { showToast } = useToast();
@@ -19,26 +19,40 @@ export default function PortalCollections() {
 
   const load = () => {
     setLoading(true);
-    collectionService.getAll().then((c) => {
-      setCollections(c);
-      setLoading(false);
-    });
+    collectionService
+      .getAll()
+      .then((c) => {
+        setCollections(c);
+        setLoading(false);
+      })
+      .catch((err) => {
+        showToast(mapSupabaseError(err).message, 'error');
+        setLoading(false);
+      });
   };
 
   useEffect(() => { load(); }, []);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    await collectionService.delete(deleteTarget.id);
-    showToast(`${deleteTarget.name} deleted`, 'success');
-    setDeleteTarget(null);
-    load();
+    try {
+      await collectionService.delete(deleteTarget.id);
+      showToast(`${deleteTarget.name} deleted`, 'success');
+      setDeleteTarget(null);
+      load();
+    } catch (err) {
+      showToast(mapSupabaseError(err).message, 'error');
+    }
   };
 
   const handleArchive = async (col: Collection) => {
-    await collectionService.archive(col.id);
-    showToast(`${col.name} archived`, 'info');
-    load();
+    try {
+      await collectionService.archive(col.id);
+      showToast(`${col.name} archived`, 'info');
+      load();
+    } catch (err) {
+      showToast(mapSupabaseError(err).message, 'error');
+    }
   };
 
   return (
@@ -114,16 +128,20 @@ export default function PortalCollections() {
           collection={editing}
           onClose={() => { setEditing(null); setCreating(false); }}
           onSave={async (data) => {
-            if (editing) {
-              await collectionService.update(editing.id, data);
-              showToast('Collection updated', 'success');
-            } else {
-              await collectionService.create(data);
-              showToast('Collection created', 'success');
+            try {
+              if (editing) {
+                await collectionService.update(editing.id, data);
+                showToast('Collection updated', 'success');
+              } else {
+                await collectionService.create(data);
+                showToast('Collection created', 'success');
+              }
+              setEditing(null);
+              setCreating(false);
+              load();
+            } catch (err) {
+              showToast(mapSupabaseError(err).message, 'error');
             }
-            setEditing(null);
-            setCreating(false);
-            load();
           }}
         />
       )}

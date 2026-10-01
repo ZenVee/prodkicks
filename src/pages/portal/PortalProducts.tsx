@@ -1,11 +1,12 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Search, MoreVertical, Edit2, Copy, Archive, Trash2 } from 'lucide-react';
+import { Plus, Search, Edit2, Copy, Archive, Trash2 } from 'lucide-react';
 import type { Product, ProductCategory, ProductStatus } from '@/types';
 import { productService } from '@/services/productService';
 import { useToast } from '@/hooks/useToast';
 import Modal from '@/components/common/Modal';
 import { formatPrice, formatRelativeTime } from '@/utils/format';
+import { mapSupabaseError } from '@/utils/errors';
 
 const statusColors: Record<ProductStatus, string> = {
   published: 'text-lime',
@@ -28,6 +29,58 @@ const statusFilters: { label: string; value: ProductStatus | 'all' }[] = [
   { label: 'Archived', value: 'archived' },
 ];
 
+function ProductActions({
+  product,
+  onDuplicate,
+  onArchive,
+  onDelete,
+}: {
+  product: Product;
+  onDuplicate: (id: string) => void;
+  onArchive: (product: Product) => void;
+  onDelete: (product: Product) => void;
+}) {
+  return (
+    <div className="inline-flex items-center gap-1">
+      <Link
+        to={`/portal/products/${product.id}/edit`}
+        title="Edit"
+        aria-label={`Edit ${product.name}`}
+        className="p-1.5 text-bone-muted hover:text-lime transition-colors"
+      >
+        <Edit2 size={15} />
+      </Link>
+      <button
+        type="button"
+        title="Duplicate"
+        aria-label={`Duplicate ${product.name}`}
+        onClick={() => onDuplicate(product.id)}
+        className="p-1.5 text-bone-muted hover:text-lime transition-colors"
+      >
+        <Copy size={15} />
+      </button>
+      <button
+        type="button"
+        title="Archive"
+        aria-label={`Archive ${product.name}`}
+        onClick={() => onArchive(product)}
+        className="p-1.5 text-bone-muted hover:text-lime transition-colors"
+      >
+        <Archive size={15} />
+      </button>
+      <button
+        type="button"
+        title="Delete"
+        aria-label={`Delete ${product.name}`}
+        onClick={() => onDelete(product)}
+        className="p-1.5 text-bone-muted hover:text-red-500 transition-colors"
+      >
+        <Trash2 size={15} />
+      </button>
+    </div>
+  );
+}
+
 export default function PortalProducts() {
   const { showToast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
@@ -35,15 +88,20 @@ export default function PortalProducts() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<ProductCategory | 'all'>('all');
   const [status, setStatus] = useState<ProductStatus | 'all'>('all');
-  const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
 
   const load = () => {
     setLoading(true);
-    productService.getAll().then((p) => {
-      setProducts(p);
-      setLoading(false);
-    });
+    productService
+      .getAll()
+      .then((p) => {
+        setProducts(p);
+        setLoading(false);
+      })
+      .catch((err) => {
+        showToast(mapSupabaseError(err).message, 'error');
+        setLoading(false);
+      });
   };
 
   useEffect(() => { load(); }, []);
@@ -61,27 +119,38 @@ export default function PortalProducts() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    await productService.delete(deleteTarget.id);
-    showToast(`${deleteTarget.name} deleted`, 'success');
-    setDeleteTarget(null);
-    load();
+    try {
+      await productService.delete(deleteTarget.id);
+      showToast(`${deleteTarget.name} deleted`, 'success');
+      setDeleteTarget(null);
+      load();
+    } catch (err) {
+      showToast(mapSupabaseError(err).message, 'error');
+    }
   };
 
   const handleDuplicate = async (id: string) => {
-    const copy = await productService.duplicate(id);
-    if (copy) showToast(`${copy.name} created`, 'success');
-    load();
+    try {
+      const copy = await productService.duplicate(id);
+      if (copy) showToast(`${copy.name} created`, 'success');
+      load();
+    } catch (err) {
+      showToast(mapSupabaseError(err).message, 'error');
+    }
   };
 
   const handleArchive = async (product: Product) => {
-    await productService.update(product.id, { status: 'archived' });
-    showToast(`${product.name} archived`, 'info');
-    load();
+    try {
+      await productService.update(product.id, { status: 'archived' });
+      showToast(`${product.name} archived`, 'info');
+      load();
+    } catch (err) {
+      showToast(mapSupabaseError(err).message, 'error');
+    }
   };
 
   return (
     <div className="max-w-6xl mx-auto">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="font-display text-3xl lg:text-4xl tracking-tighter text-bone">Products</h1>
@@ -96,7 +165,6 @@ export default function PortalProducts() {
         </Link>
       </div>
 
-      {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <div className="relative flex-1">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-bone-muted" />
@@ -110,7 +178,7 @@ export default function PortalProducts() {
         </div>
         <select
           value={category}
-          onChange={(e) => setCategory(e.target.value as any)}
+          onChange={(e) => setCategory(e.target.value as ProductCategory | 'all')}
           className="px-3 py-2 text-sm bg-ink-surface border border-white/10 text-bone focus:border-lime/50 focus:outline-none"
         >
           {categoryFilters.map((c) => (
@@ -119,7 +187,7 @@ export default function PortalProducts() {
         </select>
         <select
           value={status}
-          onChange={(e) => setStatus(e.target.value as any)}
+          onChange={(e) => setStatus(e.target.value as ProductStatus | 'all')}
           className="px-3 py-2 text-sm bg-ink-surface border border-white/10 text-bone focus:border-lime/50 focus:outline-none"
         >
           {statusFilters.map((s) => (
@@ -128,8 +196,7 @@ export default function PortalProducts() {
         </select>
       </div>
 
-      {/* Table - Desktop */}
-      <div className="hidden lg:block bg-ink-surface border border-white/5 overflow-hidden">
+      <div className="hidden lg:block bg-ink-surface border border-white/5">
         <table className="w-full">
           <thead>
             <tr className="border-b border-white/5">
@@ -167,32 +234,13 @@ export default function PortalProducts() {
                   <span className={`text-xs capitalize ${statusColors[p.status]}`}>{p.status}</span>
                 </td>
                 <td className="px-4 py-2.5 text-xs text-bone-muted">{formatRelativeTime(p.updatedAt)}</td>
-                <td className="px-4 py-2.5 text-right relative">
-                  <button
-                    onClick={() => setOpenMenu(openMenu === p.id ? null : p.id)}
-                    className="text-bone-muted hover:text-bone"
-                  >
-                    <MoreVertical size={16} />
-                  </button>
-                  {openMenu === p.id && (
-                    <>
-                      <div className="fixed inset-0 z-10" onClick={() => setOpenMenu(null)} />
-                      <div className="absolute right-4 top-full mt-1 w-40 bg-ink-surface border border-white/10 z-20 animate-slide-down text-left">
-                        <Link to={`/portal/products/${p.id}/edit`} className="flex items-center gap-2 px-3 py-2 text-xs text-bone hover:bg-ink-raised hover:text-lime">
-                          <Edit2 size={13} /> Edit
-                        </Link>
-                        <button onClick={() => handleDuplicate(p.id)} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-bone hover:bg-ink-raised hover:text-lime">
-                          <Copy size={13} /> Duplicate
-                        </button>
-                        <button onClick={() => handleArchive(p)} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-bone hover:bg-ink-raised hover:text-lime">
-                          <Archive size={13} /> Archive
-                        </button>
-                        <button onClick={() => { setDeleteTarget(p); setOpenMenu(null); }} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-500 hover:bg-ink-raised">
-                          <Trash2 size={13} /> Delete
-                        </button>
-                      </div>
-                    </>
-                  )}
+                <td className="px-4 py-2.5 text-right">
+                  <ProductActions
+                    product={p}
+                    onDuplicate={handleDuplicate}
+                    onArchive={handleArchive}
+                    onDelete={setDeleteTarget}
+                  />
                 </td>
               </tr>
             ))}
@@ -200,7 +248,6 @@ export default function PortalProducts() {
         </table>
       </div>
 
-      {/* Cards - Mobile */}
       <div className="lg:hidden space-y-3">
         {loading ? (
           <p className="text-sm text-bone-muted text-center py-12">Loading...</p>
@@ -219,13 +266,20 @@ export default function PortalProducts() {
                   <span className="text-sm text-lime">{formatPrice(p.price, p.currency)}</span>
                   <span className={`text-xs capitalize ${statusColors[p.status]}`}>{p.status}</span>
                 </div>
+                <div className="mt-3">
+                  <ProductActions
+                    product={p}
+                    onDuplicate={handleDuplicate}
+                    onArchive={handleArchive}
+                    onDelete={setDeleteTarget}
+                  />
+                </div>
               </div>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Delete confirmation */}
       <Modal
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}

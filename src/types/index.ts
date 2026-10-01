@@ -79,12 +79,94 @@ export interface StaffMember {
   displayOrder: number;
 }
 
+/** Employee portal RBAC roles (separate from public team StaffRole). */
+export type EmployeeRole = 'developer' | 'owner' | 'manager' | 'staff';
+
+export type AccountStatus = 'pending' | 'approved' | 'declined' | 'disabled';
+
+export type Permission =
+  | 'products.view'
+  | 'products.create'
+  | 'products.edit'
+  | 'products.delete'
+  | 'products.publish'
+  | 'collections.view'
+  | 'collections.create'
+  | 'collections.edit'
+  | 'collections.delete'
+  | 'drops.view'
+  | 'drops.create'
+  | 'drops.edit'
+  | 'drops.delete'
+  | 'drops.publish'
+  | 'team.view'
+  | 'team.create'
+  | 'team.edit'
+  | 'team.delete'
+  | 'homepage.edit'
+  | 'settings.view'
+  | 'settings.edit'
+  | 'accounts.view'
+  | 'accounts.approve'
+  | 'accounts.decline'
+  | 'accounts.disable'
+  | 'permissions.view'
+  | 'permissions.manage'
+  | 'audit.view';
+
+export interface StaffAccount {
+  id: string;
+  discordId: string | null;
+  discordUsername: string | null;
+  discordAvatarUrl: string | null;
+  fullName: string | null;
+  stateId: string | null;
+  status: AccountStatus | null;
+  role: EmployeeRole | null;
+  profileCompletedAt: string | null;
+  approvedAt: string | null;
+  approvedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RolePermission {
+  role: Exclude<EmployeeRole, 'developer'>;
+  permissionKey: Permission;
+}
+
+export interface AccessRequest {
+  id: string;
+  discordUsername: string | null;
+  discordAvatarUrl: string | null;
+  fullName: string | null;
+  stateId: string | null;
+  profileCompletedAt: string | null;
+  createdAt: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  actorUserId: string | null;
+  targetUserId: string | null;
+  action: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface PermissionDefinition {
+  key: Permission;
+  category: string;
+  label: string;
+  sortOrder: number;
+}
+
 export interface User {
   id: string;
   name: string;
   email: string;
   avatar: string;
-  role: StaffRole;
+  role: EmployeeRole | null;
   position: string;
 }
 
@@ -94,19 +176,12 @@ export interface SiteSettings {
   establishedYear: string;
   currencySymbol: string;
   footerText: string;
-  socialLinks: {
-    instagram: string;
-    twitter: string;
-    youtube: string;
-  };
-  discordUrl: string;
   seoTitle: string;
   seoDescription: string;
 }
 
 export type HomepageSectionType =
   | 'hero'
-  | 'upcoming-drop'
   | 'shop'
   | 'featured-collection'
   | 'promotional-banner';
@@ -120,6 +195,7 @@ export interface HomepageSection {
   config: {
     featuredCollectionId?: string;
     featuredDropId?: string;
+    featuredDropIds?: string[];
     featuredProductIds?: string[];
     heroImage?: string;
     bannerText?: string;

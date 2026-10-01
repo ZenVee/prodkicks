@@ -25,7 +25,7 @@ const sortOptions: { label: string; value: SortOption }[] = [
   { label: 'Price High-Low', value: 'price-high' },
 ];
 
-export default function ShopSection() {
+export default function ShopSection({ featuredProductIds }: { featuredProductIds?: string[] } = {}) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterCategory>('all');
@@ -42,16 +42,28 @@ export default function ShopSection() {
     const category = filter === 'new-releases' || filter === 'limited' ? 'all' : filter;
 
     productService
-      .filter({ category, search, sort, labels })
+      .filter({
+        category,
+        search,
+        sort,
+        labels,
+        productIds: featuredProductIds?.length ? featuredProductIds : undefined,
+      })
       .then((result) => {
         if (!cancelled) {
           setProducts(result);
           setLoading(false);
         }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setProducts([]);
+          setLoading(false);
+        }
       });
 
     return () => { cancelled = true; };
-  }, [filter, search, sort]);
+  }, [filter, search, sort, featuredProductIds]);
 
   const currentSortLabel = useMemo(
     () => sortOptions.find((o) => o.value === sort)?.label ?? 'Newest',
