@@ -5,6 +5,7 @@ import type { Collection } from '@/types';
 import { collectionService } from '@/services/collectionService';
 import { useToast } from '@/hooks/useToast';
 import Modal from '@/components/common/Modal';
+import SlugField from '@/components/common/SlugField';
 import { slugify } from '@/utils/format';
 import { mapSupabaseError } from '@/utils/errors';
 
@@ -173,6 +174,7 @@ function CollectionEditModal({
 }) {
   const [name, setName] = useState(collection?.name ?? '');
   const [slug, setSlug] = useState(collection?.slug ?? '');
+  const [slugLocked, setSlugLocked] = useState(true);
   const [description, setDescription] = useState(collection?.description ?? '');
   const [campaignImage, setCampaignImage] = useState(collection?.campaignImage ?? '');
   const [campaignHeadline, setCampaignHeadline] = useState(collection?.campaignHeadline ?? '');
@@ -192,12 +194,18 @@ function CollectionEditModal({
         <div className="p-5 space-y-4">
           <div>
             <label className="block text-xs tracking-wider uppercase text-bone-muted mb-1.5">Collection Name</label>
-            <input type="text" value={name} onChange={(e) => { setName(e.target.value); setSlug(slugify(e.target.value)); }} className="portal-input" />
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => {
+                const next = e.target.value;
+                setName(next);
+                if (slugLocked) setSlug(slugify(next));
+              }}
+              className="portal-input"
+            />
           </div>
-          <div>
-            <label className="block text-xs tracking-wider uppercase text-bone-muted mb-1.5">Slug</label>
-            <input type="text" value={slug} onChange={(e) => setSlug(e.target.value)} className="portal-input" />
-          </div>
+          <SlugField value={slug} onChange={setSlug} onLockChange={setSlugLocked} />
           <div>
             <label className="block text-xs tracking-wider uppercase text-bone-muted mb-1.5">Description</label>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="portal-input resize-none" />

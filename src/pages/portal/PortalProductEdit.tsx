@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/useToast';
 import { slugify } from '@/utils/format';
 import { mapSupabaseError } from '@/utils/errors';
 import type { Collection } from '@/types';
+import SlugField from '@/components/common/SlugField';
 
 const categories: ProductCategory[] = ['footwear', 'tops', 'bottoms', 'accessories'];
 const statuses: ProductStatus[] = ['draft', 'published', 'archived'];
@@ -40,6 +41,7 @@ export default function PortalProductEdit() {
   const [newVariant, setNewVariant] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [saving, setSaving] = useState(false);
+  const [slugLocked, setSlugLocked] = useState(true);
 
   useEffect(() => {
     collectionService.getActive().then(setCollections).catch(() => setCollections([]));
@@ -55,7 +57,10 @@ export default function PortalProductEdit() {
   };
 
   const handleSave = async (publish = false) => {
-    const data = { ...product, status: publish ? ('published' as const) : product.status };
+    const data = {
+      ...product,
+      status: publish ? ('published' as const) : ('draft' as const),
+    };
     setSaving(true);
     try {
       if (isNew) {
@@ -63,7 +68,7 @@ export default function PortalProductEdit() {
         showToast(publish ? 'Product published' : 'Draft saved', 'success');
       } else if (id) {
         await productService.update(id, data);
-        showToast(publish ? 'Product published' : 'Changes saved', 'success');
+        showToast(publish ? 'Product published' : 'Draft saved', 'success');
       }
       navigate('/portal/products');
     } catch (err) {
@@ -127,16 +132,25 @@ export default function PortalProductEdit() {
               <input
                 type="text"
                 value={product.name ?? ''}
-                onChange={(e) => { update('name', e.target.value); update('slug', slugify(e.target.value)); }}
+                onChange={(e) => {
+                  const name = e.target.value;
+                  setProduct((prev) => ({
+                    ...prev,
+                    name,
+                    ...(slugLocked ? { slug: slugify(name) } : {}),
+                  }));
+                }}
                 className="portal-input"
               />
             </Field>
             <Field label="SKU">
               <input type="text" value={product.sku ?? ''} onChange={(e) => update('sku', e.target.value)} className="portal-input" />
             </Field>
-            <Field label="Slug">
-              <input type="text" value={product.slug ?? ''} onChange={(e) => update('slug', e.target.value)} className="portal-input" />
-            </Field>
+            <SlugField
+              value={product.slug ?? ''}
+              onChange={(slug) => update('slug', slug)}
+              onLockChange={setSlugLocked}
+            />
             <Field label="Category">
               <select value={product.category ?? 'footwear'} onChange={(e) => update('category', e.target.value)} className="portal-input">
                 {categories.map((c) => <option key={c} value={c}>{c}</option>)}

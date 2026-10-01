@@ -99,6 +99,11 @@ export type Permission =
   | 'drops.edit'
   | 'drops.delete'
   | 'drops.publish'
+  | 'magazine.view'
+  | 'magazine.create'
+  | 'magazine.edit'
+  | 'magazine.delete'
+  | 'magazine.publish'
   | 'team.view'
   | 'team.create'
   | 'team.edit'
@@ -180,6 +185,32 @@ export interface SiteSettings {
   seoDescription: string;
 }
 
+export type ArticleStatus = 'draft' | 'published';
+
+/** TipTap document JSON */
+export type ArticleBody = {
+  type: 'doc';
+  content?: Record<string, unknown>[];
+};
+
+export interface Article {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string;
+  coverImage: string;
+  body: ArticleBody;
+  status: ArticleStatus;
+  featuredOnHomepage: boolean;
+  authorId: string | null;
+  authorName: string;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type HeroMode = 'drops' | 'articles_first' | 'mixed' | 'featured_articles';
+
 export type HomepageSectionType =
   | 'hero'
   | 'shop'
@@ -198,6 +229,7 @@ export interface HomepageSection {
     featuredDropIds?: string[];
     featuredProductIds?: string[];
     heroImage?: string;
+    heroMode?: HeroMode;
     bannerText?: string;
     bannerImage?: string;
   };

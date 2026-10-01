@@ -21,6 +21,7 @@ export const mockHomepageContent: HomepageContent = {
       config: {
         featuredDropId: 'd1',
         featuredDropIds: ['d1', 'd2'],
+        heroMode: 'articles_first',
         heroImage: 'https://images.pexels.com/photos/13873170/pexels-photo-13873170.jpeg?auto=compress&cs=tinysrgb&h=650&w=940',
       },
     },
