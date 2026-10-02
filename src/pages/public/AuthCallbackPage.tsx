@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { destinationForAccount } from '@/services/authService';
+import { authService, destinationForAccount } from '@/services/authService';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 export default function AuthCallbackPage() {
@@ -15,9 +15,19 @@ export default function AuthCallbackPage() {
       return;
     }
 
+    const pendingSignIn = authService.consumePendingSignInAudit();
+
     const run = async () => {
       try {
         await refreshAccount();
+        if (pendingSignIn) {
+          try {
+            const session = await authService.getSession();
+            if (session) await authService.recordStaffSession('signed_in');
+          } catch (err) {
+            if (import.meta.env.DEV) console.error(err);
+          }
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Authentication failed.');
       }

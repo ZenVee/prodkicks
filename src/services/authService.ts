@@ -13,6 +13,8 @@ import { mapSupabaseError } from '@/utils/errors';
 
 type StaffRow = Database['public']['Tables']['staff_accounts']['Row'];
 
+const PENDING_SIGN_IN_AUDIT_KEY = 'prodkicks.pending_sign_in_audit';
+
 export function mapStaffAccount(row: StaffRow): StaffAccount {
   return {
     id: row.id,
@@ -86,11 +88,21 @@ export const authService = {
 
   async signInWithDiscord(): Promise<void> {
     const redirectTo = `${window.location.origin}/auth/callback`;
+    sessionStorage.setItem(PENDING_SIGN_IN_AUDIT_KEY, '1');
     const { error } = await getSupabase().auth.signInWithOAuth({
       provider: 'discord',
       options: { redirectTo },
     });
-    if (error) throw mapSupabaseError(error, 'Could not start Discord sign-in.');
+    if (error) {
+      sessionStorage.removeItem(PENDING_SIGN_IN_AUDIT_KEY);
+      throw mapSupabaseError(error, 'Could not start Discord sign-in.');
+    }
+  },
+
+  consumePendingSignInAudit(): boolean {
+    if (sessionStorage.getItem(PENDING_SIGN_IN_AUDIT_KEY) !== '1') return false;
+    sessionStorage.removeItem(PENDING_SIGN_IN_AUDIT_KEY);
+    return true;
   },
 
   async signOut(): Promise<void> {
