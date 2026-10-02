@@ -153,7 +153,9 @@ export interface AccessRequest {
 export interface AuditLogEntry {
   id: string;
   actorUserId: string | null;
+  actorName: string | null;
   targetUserId: string | null;
+  targetName: string | null;
   action: string;
   metadata: Record<string, unknown>;
   createdAt: string;

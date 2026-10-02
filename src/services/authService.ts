@@ -271,10 +271,32 @@ export const authService = {
       .order('created_at', { ascending: false })
       .limit(limit);
     if (error) throw mapSupabaseError(error);
-    return (data ?? []).map((row) => ({
+
+    const rows = data ?? [];
+    const userIds = [
+      ...new Set(
+        rows.flatMap((row) => [row.actor_user_id, row.target_user_id].filter((id): id is string => Boolean(id)))
+      ),
+    ];
+    const names = new Map<string, string>();
+    if (userIds.length > 0) {
+      const { data: accounts, error: accountError } = await getSupabase()
+        .from('staff_accounts')
+        .select('id, full_name, discord_username')
+        .in('id', userIds);
+      if (accountError) throw mapSupabaseError(accountError);
+      for (const account of accounts ?? []) {
+        const label = account.full_name?.trim() || account.discord_username?.trim();
+        if (label) names.set(account.id, label);
+      }
+    }
+
+    return rows.map((row) => ({
       id: row.id,
       actorUserId: row.actor_user_id,
+      actorName: row.actor_user_id ? names.get(row.actor_user_id) ?? null : null,
       targetUserId: row.target_user_id,
+      targetName: row.target_user_id ? names.get(row.target_user_id) ?? null : null,
       action: row.action,
       metadata: (row.metadata ?? {}) as Record<string, unknown>,
       createdAt: row.created_at,

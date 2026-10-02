@@ -6,7 +6,8 @@ import { mapSupabaseError } from '@/utils/errors';
 import { formatDate } from '@/utils/format';
 
 function auditTarget(entry: AuditLogEntry): string {
-  if (entry.targetUserId) return entry.targetUserId.slice(0, 8);
+  if (entry.targetName) return entry.targetName;
+  if (entry.targetUserId) return '—';
   const label = entry.metadata.label;
   const id = entry.metadata.id;
   if (typeof label === 'string' && label.length > 0) return label;
@@ -52,7 +53,7 @@ export default function PortalAudit() {
               <tr key={entry.id} className="border-b border-white/5">
                 <td className="px-4 py-3 text-xs text-bone-muted">{formatDate(entry.createdAt)}</td>
                 <td className="px-4 py-3 text-sm text-bone font-mono">{entry.action}</td>
-                <td className="px-4 py-3 text-xs font-mono text-bone-muted">{entry.actorUserId?.slice(0, 8) ?? '—'}</td>
+                <td className="px-4 py-3 text-sm text-bone">{entry.actorName ?? '—'}</td>
                 <td className="px-4 py-3 text-xs font-mono text-bone-muted">{auditTarget(entry)}</td>
                 <td className="px-4 py-3 text-xs font-mono text-bone-muted max-w-xs truncate">
                   {JSON.stringify(entry.metadata)}
