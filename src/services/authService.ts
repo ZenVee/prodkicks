@@ -247,7 +247,12 @@ export const authService = {
     if (error) throw mapSupabaseError(error);
   },
 
-  async listAuditLog(limit = 100): Promise<AuditLogEntry[]> {
+  async recordStaffSession(event: 'signed_in' | 'signed_out'): Promise<void> {
+    const { error } = await getSupabase().rpc('record_staff_session', { event });
+    if (error) throw mapSupabaseError(error);
+  },
+
+  async listAuditLog(limit = 200): Promise<AuditLogEntry[]> {
     const { data, error } = await getSupabase()
       .from('staff_audit_log')
       .select('*')

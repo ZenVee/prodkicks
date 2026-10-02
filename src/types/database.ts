@@ -453,6 +453,10 @@ export type Database = {
         };
         Returns: undefined;
       };
+      record_staff_session: {
+        Args: { event: string };
+        Returns: undefined;
+      };
     };
     Enums: {
       account_status: AccountStatus;

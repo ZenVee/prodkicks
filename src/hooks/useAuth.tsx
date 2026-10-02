@@ -96,10 +96,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Token refresh / focus recovery must not flip loading — RequireApproved
     // unmounts the portal while loading, which wipes in-progress forms.
-    const unsubscribeAuth = authService.onAuthStateChange(async (_event, next) => {
+    const unsubscribeAuth = authService.onAuthStateChange(async (event, next) => {
       if (!mounted) return;
       setSession(next);
       try {
+        if (event === 'SIGNED_IN') {
+          try {
+            await authService.recordStaffSession('signed_in');
+          } catch (err) {
+            if (import.meta.env.DEV) console.error(err);
+          }
+        }
         await loadAccount(next);
         attachAccountSubscription(next?.user?.id);
       } catch (err) {
@@ -138,6 +145,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    try {
+      await authService.recordStaffSession('signed_out');
+    } catch (err) {
+      if (import.meta.env.DEV) console.error(err);
+    }
     await authService.signOut();
     setSession(null);
     setAccount(null);

@@ -5,6 +5,15 @@ import { useToast } from '@/hooks/useToast';
 import { mapSupabaseError } from '@/utils/errors';
 import { formatDate } from '@/utils/format';
 
+function auditTarget(entry: AuditLogEntry): string {
+  if (entry.targetUserId) return entry.targetUserId.slice(0, 8);
+  const label = entry.metadata.label;
+  const id = entry.metadata.id;
+  if (typeof label === 'string' && label.length > 0) return label;
+  if (typeof id === 'string' && id.length > 0) return id;
+  return '—';
+}
+
 export default function PortalAudit() {
   const { showToast } = useToast();
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
@@ -21,7 +30,7 @@ export default function PortalAudit() {
   return (
     <div className="max-w-6xl mx-auto">
       <h1 className="font-display text-3xl lg:text-4xl tracking-tighter text-bone mb-1">Audit Log</h1>
-      <p className="text-sm text-bone-muted mb-8">Sensitive staff and access actions.</p>
+      <p className="text-sm text-bone-muted mb-8">Staff, access, and content actions.</p>
 
       <div className="bg-ink-surface border border-white/5 overflow-hidden">
         <table className="w-full">
@@ -44,7 +53,7 @@ export default function PortalAudit() {
                 <td className="px-4 py-3 text-xs text-bone-muted">{formatDate(entry.createdAt)}</td>
                 <td className="px-4 py-3 text-sm text-bone font-mono">{entry.action}</td>
                 <td className="px-4 py-3 text-xs font-mono text-bone-muted">{entry.actorUserId?.slice(0, 8) ?? '—'}</td>
-                <td className="px-4 py-3 text-xs font-mono text-bone-muted">{entry.targetUserId?.slice(0, 8) ?? '—'}</td>
+                <td className="px-4 py-3 text-xs font-mono text-bone-muted">{auditTarget(entry)}</td>
                 <td className="px-4 py-3 text-xs font-mono text-bone-muted max-w-xs truncate">
                   {JSON.stringify(entry.metadata)}
                 </td>
