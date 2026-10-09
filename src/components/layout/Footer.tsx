@@ -77,6 +77,9 @@ export default function Footer() {
             PK / {String(year).slice(-3).padStart(3, '0')}
           </p>
         </div>
+        <p className="mt-4 text-center text-[11px] tracking-wide text-bone-muted/70">
+          Made by Oz Mancini
+        </p>
       </div>
     </footer>
   );
