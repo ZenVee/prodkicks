@@ -2,7 +2,7 @@
 -- Public site reads safe fields only via get_public_staff().
 
 alter table public.staff_accounts
-  add column if not exists position text,
+  add column if not exists "position" text,
   add column if not exists bio text not null default '',
   add column if not exists photo_url text,
   add column if not exists show_on_website boolean not null default false,
@@ -14,7 +14,7 @@ begin
   if to_regclass('public.team_members') is not null then
     update public.staff_accounts sa
     set
-      position = coalesce(nullif(sa.position, ''), tm.position, sa.position),
+      "position" = coalesce(nullif(sa."position", ''), tm.position, sa."position"),
       bio = case when coalesce(sa.bio, '') = '' then coalesce(tm.bio, '') else sa.bio end,
       photo_url = coalesce(nullif(sa.photo_url, ''), nullif(tm.photo, ''), sa.photo_url),
       show_on_website = coalesce(tm.show_on_website, sa.show_on_website),
@@ -28,7 +28,7 @@ create or replace function public.get_public_staff()
 returns table (
   id uuid,
   name text,
-  position text,
+  "position" text,
   role public.employee_role,
   bio text,
   photo text,
@@ -42,7 +42,7 @@ as $$
   select
     sa.id,
     coalesce(sa.full_name, sa.discord_username, 'Staff') as name,
-    coalesce(sa.position, '') as position,
+    coalesce(sa."position", '') as "position",
     sa.role,
     coalesce(sa.bio, '') as bio,
     coalesce(nullif(sa.photo_url, ''), sa.discord_avatar_url, '') as photo,
@@ -103,7 +103,7 @@ begin
 
   update public.staff_accounts
   set
-    position = case when new_position is null then position else btrim(new_position) end,
+    "position" = case when new_position is null then "position" else btrim(new_position) end,
     bio = case when new_bio is null then bio else new_bio end,
     photo_url = case when new_photo_url is null then photo_url else nullif(btrim(new_photo_url), '') end,
     show_on_website = coalesce(new_show_on_website, show_on_website),
