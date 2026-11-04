@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Check, Plus, Search, Shield, Trash2 } from 'lucide-react';
 import type { Permission, PermissionDefinition, StaffRoleRecord } from '@/types';
 import { authService } from '@/services/authService';
 import { useAuth } from '@/hooks/useAuth';
@@ -14,15 +14,24 @@ export default function PortalPermissions() {
   const [roles, setRoles] = useState<StaffRoleRecord[]>([]);
   const [matrix, setMatrix] = useState<Record<string, Set<Permission>>>({});
   const [loading, setLoading] = useState(true);
+  const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [newKey, setNewKey] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const [creating, setCreating] = useState(false);
+  const [editingLabel, setEditingLabel] = useState('');
   const canManage = hasPermission('permissions.manage');
 
   const assignableRoles = useMemo(
     () => roles.filter((r) => r.key !== 'developer'),
     [roles]
+  );
+
+  const selectedRole = useMemo(
+    () => assignableRoles.find((r) => r.id === selectedRoleId) ?? null,
+    [assignableRoles, selectedRoleId]
   );
 
   const load = async () => {
@@ -43,6 +52,11 @@ export default function PortalPermissions() {
         next[row.roleId]?.add(row.permissionKey);
       }
       setMatrix(next);
+      setSelectedRoleId((prev) => {
+        if (prev && next[prev]) return prev;
+        const first = allRoles.find((r) => r.key !== 'developer');
+        return first?.id ?? null;
+      });
     } catch (err) {
       showToast(mapSupabaseError(err).message, 'error');
     } finally {
@@ -54,29 +68,87 @@ export default function PortalPermissions() {
     void load();
   }, []);
 
+  useEffect(() => {
+    setEditingLabel(selectedRole?.label ?? '');
+  }, [selectedRole?.id, selectedRole?.label]);
+
+  const filteredDefs = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return defs;
+    return defs.filter(
+      (d) =>
+        d.label.toLowerCase().includes(q) ||
+        d.key.toLowerCase().includes(q) ||
+        d.category.toLowerCase().includes(q)
+    );
+  }, [defs, query]);
+
   const grouped = useMemo(() => {
     const map = new Map<string, PermissionDefinition[]>();
-    for (const def of defs) {
+    for (const def of filteredDefs) {
       const list = map.get(def.category) ?? [];
       list.push(def);
       map.set(def.category, list);
     }
     return [...map.entries()];
-  }, [defs]);
+  }, [filteredDefs]);
+
+  const selectedCount = selectedRoleId
+    ? (matrix[selectedRoleId]?.size ?? 0)
+    : 0;
+  const totalCount = defs.length;
+
+  const roleCount = (roleId: string) => matrix[roleId]?.size ?? 0;
 
   const toggle = async (roleId: string, key: Permission, enabled: boolean) => {
-    if (!canManage) return;
+    if (!canManage || pendingKey) return;
+    const token = `${roleId}:${key}`;
+    setPendingKey(token);
+    const prev = new Set(matrix[roleId] ?? []);
+    setMatrix((m) => {
+      const next = { ...m, [roleId]: new Set(m[roleId]) };
+      if (enabled) next[roleId].add(key);
+      else next[roleId].delete(key);
+      return next;
+    });
     try {
       await authService.setRolePermission(roleId, key, enabled);
-      setMatrix((prev) => {
-        const next = { ...prev, [roleId]: new Set(prev[roleId]) };
-        if (enabled) next[roleId].add(key);
-        else next[roleId].delete(key);
-        return next;
-      });
-      showToast('Permission updated', 'success');
     } catch (err) {
+      setMatrix((m) => ({ ...m, [roleId]: prev }));
       showToast(mapSupabaseError(err).message, 'error');
+    } finally {
+      setPendingKey(null);
+    }
+  };
+
+  const setCategory = async (roleId: string, items: PermissionDefinition[], enabled: boolean) => {
+    if (!canManage || pendingKey) return;
+    const toChange = items.filter((item) => {
+      const has = matrix[roleId]?.has(item.key) ?? false;
+      return has !== enabled;
+    });
+    if (toChange.length === 0) return;
+
+    setPendingKey(`${roleId}:category`);
+    const prev = new Set(matrix[roleId] ?? []);
+    setMatrix((m) => {
+      const next = { ...m, [roleId]: new Set(m[roleId]) };
+      for (const item of toChange) {
+        if (enabled) next[roleId].add(item.key);
+        else next[roleId].delete(item.key);
+      }
+      return next;
+    });
+
+    try {
+      await Promise.all(
+        toChange.map((item) => authService.setRolePermission(roleId, item.key, enabled))
+      );
+    } catch (err) {
+      setMatrix((m) => ({ ...m, [roleId]: prev }));
+      showToast(mapSupabaseError(err).message, 'error');
+    } finally {
+      setPendingKey(null);
     }
   };
 
@@ -84,12 +156,13 @@ export default function PortalPermissions() {
     if (!canManage) return;
     setCreating(true);
     try {
-      await authService.createRole(newKey, newLabel);
+      const created = await authService.createRole(newKey, newLabel);
       showToast('Role created', 'success');
       setCreateOpen(false);
       setNewKey('');
       setNewLabel('');
       await load();
+      if (created?.id) setSelectedRoleId(created.id);
     } catch (err) {
       showToast(mapSupabaseError(err).message, 'error');
     } finally {
@@ -97,14 +170,17 @@ export default function PortalPermissions() {
     }
   };
 
-  const renameRole = async (role: StaffRoleRecord, label: string) => {
-    if (!canManage || role.isSystem || label.trim() === role.label) return;
+  const renameRole = async () => {
+    if (!canManage || !selectedRole || selectedRole.isSystem) return;
+    const next = editingLabel.trim();
+    if (!next || next === selectedRole.label) return;
     try {
-      await authService.updateRole(role.id, label.trim(), role.sortOrder);
+      await authService.updateRole(selectedRole.id, next, selectedRole.sortOrder);
       showToast('Role updated', 'success');
       await load();
     } catch (err) {
       showToast(mapSupabaseError(err).message, 'error');
+      setEditingLabel(selectedRole.label);
     }
   };
 
@@ -114,6 +190,7 @@ export default function PortalPermissions() {
     try {
       await authService.deleteRole(role.id);
       showToast('Role deleted', 'success');
+      if (selectedRoleId === role.id) setSelectedRoleId(null);
       await load();
     } catch (err) {
       showToast(mapSupabaseError(err).message, 'error');
@@ -124,9 +201,11 @@ export default function PortalPermissions() {
     <div className="max-w-6xl mx-auto">
       <div className="flex flex-wrap items-start justify-between gap-4 mb-8">
         <div>
-          <h1 className="font-display text-3xl lg:text-4xl tracking-tighter text-bone mb-1">Permissions</h1>
+          <h1 className="font-display text-3xl lg:text-4xl tracking-tighter text-bone mb-1">
+            Permissions
+          </h1>
           <p className="text-sm text-bone-muted">
-            Create roles and assign permissions. Developer always has full access.
+            Pick a role, then turn capabilities on or off. Developer always has full access.
           </p>
         </div>
         {canManage && (
@@ -141,87 +220,219 @@ export default function PortalPermissions() {
         )}
       </div>
 
-      {canManage && assignableRoles.length > 0 && (
-        <div className="bg-ink-surface border border-white/5 mb-8 divide-y divide-white/5">
-          {assignableRoles.map((role) => (
-            <div key={role.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-              <input
-                type="text"
-                defaultValue={role.label}
-                disabled={role.isSystem}
-                onBlur={(e) => void renameRole(role, e.target.value)}
-                className="portal-input text-sm min-w-[10rem] flex-1 max-w-xs"
-              />
-              <span className="text-[10px] font-mono text-bone-muted">{role.key}</span>
-              {!role.isSystem && (
-                <button
-                  type="button"
-                  onClick={() => void deleteRole(role)}
-                  className="p-2 text-bone-muted hover:text-red-400 transition-colors"
-                  aria-label={`Delete ${role.label}`}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
       {loading ? (
         <p className="text-sm text-bone-muted">Loading...</p>
       ) : (
-        <div className="space-y-8">
-          {grouped.map(([category, items]) => (
-            <div key={category} className="bg-ink-surface border border-white/5 overflow-x-auto">
-              <div className="px-4 py-3 border-b border-white/5">
-                <h2 className="text-sm tracking-wider uppercase text-bone font-medium">{category}</h2>
-              </div>
-              <table className="w-full min-w-[640px]">
-                <thead>
-                  <tr className="border-b border-white/5">
-                    <th className="text-left text-xs tracking-wider uppercase text-bone-muted font-medium px-4 py-3">Permission</th>
-                    {assignableRoles.map((role) => (
-                      <th key={role.id} className="text-center text-xs tracking-wider uppercase text-bone-muted font-medium px-4 py-3">
-                        {role.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item) => (
-                    <tr key={item.key} className="border-b border-white/5">
-                      <td className="px-4 py-3">
-                        <p className="text-sm text-bone">{item.label}</p>
-                        <p className="text-[10px] font-mono text-bone-muted">{item.key}</p>
-                      </td>
-                      {assignableRoles.map((role) => {
-                        const checked = matrix[role.id]?.has(item.key) ?? false;
-                        return (
-                          <td key={role.id} className="px-4 py-3 text-center">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              disabled={!canManage}
-                              onChange={(e) => void toggle(role.id, item.key, e.target.checked)}
-                              className="accent-lime"
-                            />
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <div className="grid grid-cols-1 lg:grid-cols-[15rem_minmax(0,1fr)] gap-6 lg:gap-8">
+          <aside className="space-y-1 lg:sticky lg:top-20 lg:self-start">
+            <p className="text-[10px] tracking-widest2 uppercase text-bone-muted px-2 mb-2">
+              Roles
+            </p>
+            <div className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0 -mx-1 px-1">
+              {assignableRoles.map((role) => {
+                const count = roleCount(role.id);
+                const active = role.id === selectedRoleId;
+                return (
+                  <button
+                    key={role.id}
+                    type="button"
+                    onClick={() => setSelectedRoleId(role.id)}
+                    className={`shrink-0 lg:shrink text-left px-3 py-2.5 transition-colors border ${
+                      active
+                        ? 'border-lime/40 bg-lime/10 text-bone'
+                        : 'border-transparent text-bone-muted hover:text-bone hover:bg-white/[0.03]'
+                    }`}
+                  >
+                    <span className="flex items-center justify-between gap-3">
+                      <span className="text-sm font-medium">{role.label}</span>
+                      <span className="text-[10px] font-mono tabular-nums opacity-70">
+                        {count}/{totalCount || '—'}
+                      </span>
+                    </span>
+                    <span className="block text-[10px] font-mono mt-0.5 opacity-50">{role.key}</span>
+                  </button>
+                );
+              })}
             </div>
-          ))}
+
+            <div className="hidden lg:flex items-start gap-2 px-3 py-3 mt-4 border border-dashed border-white/10 text-bone-muted">
+              <Shield className="w-3.5 h-3.5 mt-0.5 shrink-0 text-lime/70" />
+              <p className="text-[11px] leading-relaxed">
+                Developer is locked with every permission and is not listed here.
+              </p>
+            </div>
+          </aside>
+
+          <section className="min-w-0">
+            {!selectedRole ? (
+              <p className="text-sm text-bone-muted">Select a role to manage its permissions.</p>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-end gap-3 mb-6 pb-6 border-b border-white/5">
+                  <div className="flex-1 min-w-[12rem]">
+                    <label className="block text-[10px] tracking-widest2 uppercase text-bone-muted mb-1.5">
+                      Role name
+                    </label>
+                    <input
+                      type="text"
+                      value={editingLabel}
+                      disabled={!canManage || selectedRole.isSystem}
+                      onChange={(e) => setEditingLabel(e.target.value)}
+                      onBlur={() => void renameRole()}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.currentTarget.blur();
+                        }
+                      }}
+                      className="portal-input text-base font-medium"
+                    />
+                    <p className="text-[10px] font-mono text-bone-muted mt-1.5">
+                      key: {selectedRole.key}
+                      {selectedRole.isSystem ? ' · system role' : ''}
+                    </p>
+                  </div>
+
+                  <div className="text-right pb-0.5">
+                    <p className="text-2xl font-display tracking-tighter text-bone tabular-nums leading-none">
+                      {selectedCount}
+                      <span className="text-bone-muted text-base">/{totalCount}</span>
+                    </p>
+                    <p className="text-[10px] tracking-wider uppercase text-bone-muted mt-1">
+                      enabled
+                    </p>
+                  </div>
+
+                  {canManage && !selectedRole.isSystem && (
+                    <button
+                      type="button"
+                      onClick={() => void deleteRole(selectedRole)}
+                      className="p-2.5 text-bone-muted hover:text-red-400 border border-white/10 transition-colors"
+                      aria-label={`Delete ${selectedRole.label}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="relative mb-6">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-bone-muted pointer-events-none" />
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Filter permissions…"
+                    className="portal-input pl-9"
+                  />
+                </div>
+
+                {grouped.length === 0 ? (
+                  <p className="text-sm text-bone-muted">No permissions match that filter.</p>
+                ) : (
+                  <div className="space-y-8">
+                    {grouped.map(([category, items]) => {
+                      const enabledInCategory = items.filter((item) =>
+                        matrix[selectedRole.id]?.has(item.key)
+                      ).length;
+                      const allOn = enabledInCategory === items.length;
+                      const noneOn = enabledInCategory === 0;
+
+                      return (
+                        <div key={category}>
+                          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                            <div>
+                              <h2 className="text-xs tracking-widest2 uppercase text-bone font-medium">
+                                {category}
+                              </h2>
+                              <p className="text-[10px] text-bone-muted mt-0.5 tabular-nums">
+                                {enabledInCategory} of {items.length} on
+                              </p>
+                            </div>
+                            {canManage && (
+                              <div className="flex gap-1">
+                                <button
+                                  type="button"
+                                  disabled={allOn || !!pendingKey}
+                                  onClick={() => void setCategory(selectedRole.id, items, true)}
+                                  className="px-2.5 py-1 text-[10px] uppercase tracking-wider text-bone-muted hover:text-bone border border-white/10 disabled:opacity-30"
+                                >
+                                  All
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={noneOn || !!pendingKey}
+                                  onClick={() => void setCategory(selectedRole.id, items, false)}
+                                  className="px-2.5 py-1 text-[10px] uppercase tracking-wider text-bone-muted hover:text-bone border border-white/10 disabled:opacity-30"
+                                >
+                                  None
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          <ul className="divide-y divide-white/5 border-y border-white/5">
+                            {items.map((item) => {
+                              const checked = matrix[selectedRole.id]?.has(item.key) ?? false;
+                              const busy = pendingKey === `${selectedRole.id}:${item.key}`;
+                              return (
+                                <li key={item.key}>
+                                  <label
+                                    className={`flex items-center gap-4 py-3.5 px-1 cursor-pointer group ${
+                                      !canManage ? 'cursor-default' : ''
+                                    } ${busy ? 'opacity-60' : ''}`}
+                                  >
+                                    <span className="flex-1 min-w-0">
+                                      <span className="block text-sm text-bone group-hover:text-white transition-colors">
+                                        {item.label}
+                                      </span>
+                                      <span className="block text-[10px] font-mono text-bone-muted mt-0.5">
+                                        {item.key}
+                                      </span>
+                                    </span>
+                                    <span
+                                      className={`relative inline-flex h-6 w-11 shrink-0 items-center transition-colors ${
+                                        checked ? 'bg-lime' : 'bg-white/10'
+                                      } ${!canManage ? 'opacity-50' : ''}`}
+                                      aria-hidden
+                                    >
+                                      <span
+                                        className={`inline-flex h-5 w-5 items-center justify-center bg-ink transition-transform ${
+                                          checked ? 'translate-x-[1.25rem]' : 'translate-x-0.5'
+                                        }`}
+                                      >
+                                        {checked && <Check className="w-3 h-3 text-lime" strokeWidth={3} />}
+                                      </span>
+                                    </span>
+                                    <input
+                                      type="checkbox"
+                                      className="sr-only"
+                                      checked={checked}
+                                      disabled={!canManage || !!pendingKey}
+                                      onChange={(e) =>
+                                        void toggle(selectedRole.id, item.key, e.target.checked)
+                                      }
+                                    />
+                                  </label>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+          </section>
         </div>
       )}
 
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create role">
         <div className="space-y-4">
           <div>
-            <label className="block text-xs tracking-wider uppercase text-bone-muted mb-1.5">Key</label>
+            <label className="block text-xs tracking-wider uppercase text-bone-muted mb-1.5">
+              Key
+            </label>
             <input
               value={newKey}
               onChange={(e) => setNewKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
@@ -231,7 +442,9 @@ export default function PortalPermissions() {
             <p className="text-[10px] text-bone-muted mt-1">Lowercase letters, numbers, underscores.</p>
           </div>
           <div>
-            <label className="block text-xs tracking-wider uppercase text-bone-muted mb-1.5">Label</label>
+            <label className="block text-xs tracking-wider uppercase text-bone-muted mb-1.5">
+              Label
+            </label>
             <input
               value={newLabel}
               onChange={(e) => setNewLabel(e.target.value)}
