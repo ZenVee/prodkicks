@@ -79,8 +79,16 @@ export interface StaffMember {
   displayOrder: number;
 }
 
-/** Employee portal RBAC roles (separate from public team StaffRole). */
-export type EmployeeRole = 'developer' | 'owner' | 'manager' | 'staff';
+/** Portal RBAC role row (separate from public team StaffRole). */
+export interface StaffRoleRecord {
+  id: string;
+  key: string;
+  label: string;
+  isSystem: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export type AccountStatus = 'pending' | 'approved' | 'declined' | 'disabled';
 
@@ -127,7 +135,9 @@ export interface StaffAccount {
   fullName: string | null;
   stateId: string | null;
   status: AccountStatus | null;
-  role: EmployeeRole | null;
+  roleId: string | null;
+  roleKey: string | null;
+  roleLabel: string | null;
   profileCompletedAt: string | null;
   approvedAt: string | null;
   approvedBy: string | null;
@@ -136,7 +146,7 @@ export interface StaffAccount {
 }
 
 export interface RolePermission {
-  role: Exclude<EmployeeRole, 'developer'>;
+  roleId: string;
   permissionKey: Permission;
 }
 
@@ -173,7 +183,8 @@ export interface User {
   name: string;
   email: string;
   avatar: string;
-  role: EmployeeRole | null;
+  roleKey: string | null;
+  roleLabel: string | null;
   position: string;
 }
 

@@ -6,12 +6,41 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-type EmployeeRole = 'developer' | 'owner' | 'manager' | 'staff';
 type AccountStatus = 'pending' | 'approved' | 'declined' | 'disabled';
 
 export type Database = {
   public: {
     Tables: {
+      staff_roles: {
+        Row: {
+          id: string;
+          key: string;
+          label: string;
+          is_system: boolean;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          key: string;
+          label: string;
+          is_system?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          key?: string;
+          label?: string;
+          is_system?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       staff_accounts: {
         Row: {
           id: string;
@@ -21,12 +50,17 @@ export type Database = {
           full_name: string | null;
           state_id: string | null;
           status: AccountStatus | null;
-          role: EmployeeRole | null;
+          role_id: string | null;
           profile_completed_at: string | null;
           approved_at: string | null;
           approved_by: string | null;
           created_at: string;
           updated_at: string;
+          position?: string | null;
+          bio?: string;
+          photo_url?: string | null;
+          show_on_website?: boolean;
+          display_order?: number;
         };
         Insert: {
           id: string;
@@ -36,7 +70,7 @@ export type Database = {
           full_name?: string | null;
           state_id?: string | null;
           status?: AccountStatus | null;
-          role?: EmployeeRole | null;
+          role_id?: string | null;
           profile_completed_at?: string | null;
           approved_at?: string | null;
           approved_by?: string | null;
@@ -51,7 +85,7 @@ export type Database = {
           full_name?: string | null;
           state_id?: string | null;
           status?: AccountStatus | null;
-          role?: EmployeeRole | null;
+          role_id?: string | null;
           profile_completed_at?: string | null;
           approved_at?: string | null;
           approved_by?: string | null;
@@ -83,15 +117,15 @@ export type Database = {
       };
       role_permissions: {
         Row: {
-          role: Exclude<EmployeeRole, 'developer'>;
+          role_id: string;
           permission_key: string;
         };
         Insert: {
-          role: Exclude<EmployeeRole, 'developer'>;
+          role_id: string;
           permission_key: string;
         };
         Update: {
-          role?: Exclude<EmployeeRole, 'developer'>;
+          role_id?: string;
           permission_key?: string;
         };
         Relationships: [];
@@ -426,7 +460,7 @@ export type Database = {
         Returns: Database['public']['Tables']['staff_accounts']['Row'];
       };
       approve_staff_account: {
-        Args: { target_user_id: string; assigned_role: Exclude<EmployeeRole, 'developer'> };
+        Args: { target_user_id: string; assigned_role_id: string };
         Returns: Database['public']['Tables']['staff_accounts']['Row'];
       };
       decline_staff_account: {
@@ -442,25 +476,48 @@ export type Database = {
         Returns: Database['public']['Tables']['staff_accounts']['Row'];
       };
       change_staff_role: {
-        Args: { target_user_id: string; new_role: Exclude<EmployeeRole, 'developer'> };
+        Args: { target_user_id: string; new_role_id: string };
         Returns: Database['public']['Tables']['staff_accounts']['Row'];
       };
       set_role_permission: {
         Args: {
-          target_role: Exclude<EmployeeRole, 'developer'>;
+          target_role_id: string;
           permission_key: string;
           enabled: boolean;
         };
+        Returns: undefined;
+      };
+      create_staff_role: {
+        Args: { role_key: string; role_label: string };
+        Returns: Database['public']['Tables']['staff_roles']['Row'];
+      };
+      update_staff_role: {
+        Args: { target_role_id: string; role_label?: string | null; role_sort_order?: number | null };
+        Returns: Database['public']['Tables']['staff_roles']['Row'];
+      };
+      delete_staff_role: {
+        Args: { target_role_id: string };
         Returns: undefined;
       };
       record_staff_session: {
         Args: { event: string };
         Returns: undefined;
       };
+      current_staff_role_key: {
+        Args: Record<string, never>;
+        Returns: string | null;
+      };
+      current_staff_role: {
+        Args: Record<string, never>;
+        Returns: Database['public']['Tables']['staff_roles']['Row'] | null;
+      };
+      current_staff_role_info: {
+        Args: Record<string, never>;
+        Returns: { id: string; key: string; label: string; is_system: boolean } | null;
+      };
     };
     Enums: {
       account_status: AccountStatus;
-      employee_role: EmployeeRole;
     };
     CompositeTypes: Record<string, never>;
   };

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, MoreVertical, Edit2, Trash2, X, ArrowUp, ArrowDown, Eye, EyeOff } from 'lucide-react';
-import type { EmployeeRole, StaffAccount, StaffMember, StaffRole } from '@/types';
+import type { StaffAccount, StaffMember, StaffRole, StaffRoleRecord } from '@/types';
 import { staffService } from '@/services/staffService';
-import { authService, assignableRolesFor } from '@/services/authService';
+import { authService } from '@/services/authService';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
 import Modal from '@/components/common/Modal';
@@ -20,7 +20,7 @@ const roleOrder: StaffRole[] = ['owner', 'management', 'staff'];
 type Tab = 'accounts' | 'website';
 
 export default function PortalTeam() {
-  const { role: actorRole, hasPermission } = useAuth();
+  const { hasPermission } = useAuth();
   const canAccounts = hasPermission('accounts.view');
   const canWebsite = hasPermission('team.view');
 
@@ -74,24 +74,31 @@ export default function PortalTeam() {
         </div>
       )}
 
-      {tab === 'accounts' && canAccounts && <AccountsSection actorRole={actorRole} />}
+      {tab === 'accounts' && canAccounts && <AccountsSection />}
       {tab === 'website' && canWebsite && <WebsiteSection />}
     </div>
   );
 }
 
-function AccountsSection({ actorRole }: { actorRole: EmployeeRole | null }) {
+function AccountsSection() {
   const { hasPermission } = useAuth();
   const { showToast } = useToast();
   const [employees, setEmployees] = useState<StaffAccount[]>([]);
+  const [roles, setRoles] = useState<StaffRoleRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const assignable = assignableRolesFor(actorRole);
+  const canApprove = hasPermission('accounts.approve');
+  const canDisable = hasPermission('accounts.disable');
 
   const load = async () => {
     setLoading(true);
     try {
-      setEmployees(await authService.listEmployees());
+      const [emps, assignable] = await Promise.all([
+        authService.listEmployees(),
+        authService.listAssignableRoles(),
+      ]);
+      setEmployees(emps);
+      setRoles(assignable);
     } catch (err) {
       showToast(mapSupabaseError(err).message, 'error');
     } finally {
@@ -103,27 +110,13 @@ function AccountsSection({ actorRole }: { actorRole: EmployeeRole | null }) {
     void load();
   }, []);
 
-  const canManage = (emp: StaffAccount) => {
-    if (emp.role === 'developer') return false;
-    if (actorRole === 'developer') return true;
-    if (actorRole === 'owner') return emp.role === 'manager' || emp.role === 'staff';
-    if (actorRole === 'manager') return emp.role === 'staff';
-    return false;
-  };
+  const canManage = (emp: StaffAccount) => emp.roleKey !== 'developer';
 
-  const roleOptionsFor = (emp: StaffAccount) => {
-    const options = [...assignable];
-    if (emp.role && emp.role !== 'developer' && !options.includes(emp.role)) {
-      options.unshift(emp.role);
-    }
-    return options;
-  };
-
-  const changeRole = async (emp: StaffAccount, next: Exclude<EmployeeRole, 'developer'>) => {
-    if (next === emp.role) return;
+  const changeRole = async (emp: StaffAccount, nextRoleId: string) => {
+    if (nextRoleId === emp.roleId) return;
     setBusyId(emp.id);
     try {
-      await authService.changeRole(emp.id, next);
+      await authService.changeRole(emp.id, nextRoleId);
       showToast('Role updated', 'success');
       await load();
     } catch (err) {
@@ -172,7 +165,6 @@ function AccountsSection({ actorRole }: { actorRole: EmployeeRole | null }) {
             <tr><td colSpan={7} className="text-center text-sm text-bone-muted py-12">No employees</td></tr>
           ) : employees.map((emp) => {
             const manageable = canManage(emp);
-            const options = roleOptionsFor(emp);
             const busy = busyId === emp.id;
             return (
               <tr key={emp.id} className="border-b border-white/5">
@@ -185,7 +177,7 @@ function AccountsSection({ actorRole }: { actorRole: EmployeeRole | null }) {
                     )}
                     <div>
                       <p className="text-sm text-bone">{emp.fullName}</p>
-                      {emp.role === 'developer' && (
+                      {emp.roleKey === 'developer' && (
                         <span className="text-[10px] tracking-widest2 uppercase text-lime">Developer</span>
                       )}
                     </div>
@@ -194,21 +186,19 @@ function AccountsSection({ actorRole }: { actorRole: EmployeeRole | null }) {
                 <td className="px-4 py-3 text-xs text-bone-muted">{emp.discordUsername}</td>
                 <td className="px-4 py-3 text-xs font-mono text-bone-muted">{emp.stateId}</td>
                 <td className="px-4 py-3">
-                  {manageable && options.length > 0 ? (
+                  {manageable && canApprove && roles.length > 0 ? (
                     <select
-                      value={emp.role ?? 'staff'}
+                      value={emp.roleId ?? ''}
                       disabled={busy}
-                      onChange={(e) =>
-                        void changeRole(emp, e.target.value as Exclude<EmployeeRole, 'developer'>)
-                      }
-                      className="portal-input capitalize text-xs py-1.5 min-w-[7.5rem]"
+                      onChange={(e) => void changeRole(emp, e.target.value)}
+                      className="portal-input text-xs py-1.5 min-w-[7.5rem]"
                     >
-                      {options.map((r) => (
-                        <option key={r} value={r}>{r}</option>
+                      {roles.map((r) => (
+                        <option key={r.id} value={r.id}>{r.label}</option>
                       ))}
                     </select>
                   ) : (
-                    <span className="text-xs capitalize text-bone-muted">{emp.role ?? '—'}</span>
+                    <span className="text-xs text-bone-muted">{emp.roleLabel ?? '—'}</span>
                   )}
                 </td>
                 <td className="px-4 py-3 text-xs capitalize text-bone-muted">{emp.status}</td>
@@ -216,9 +206,9 @@ function AccountsSection({ actorRole }: { actorRole: EmployeeRole | null }) {
                   {emp.approvedAt ? formatDate(emp.approvedAt) : '—'}
                 </td>
                 <td className="px-4 py-3 text-right">
-                  {emp.role === 'developer' || !manageable ? (
+                  {emp.roleKey === 'developer' || !manageable ? (
                     <span className="text-xs text-bone-muted/50">—</span>
-                  ) : hasPermission('accounts.disable') && (emp.status === 'approved' || emp.status === 'disabled') ? (
+                  ) : canDisable && (emp.status === 'approved' || emp.status === 'disabled') ? (
                     <button
                       type="button"
                       disabled={busy}

@@ -30,12 +30,27 @@ function formatAuditMetadata(metadata: Record<string, unknown>): string[] {
     skip.add('to');
   }
 
+  if (typeof metadata.from_role_key === 'string' && typeof metadata.to_role_key === 'string') {
+    lines.push(`${metadata.from_role_key} → ${metadata.to_role_key}`);
+    skip.add('from_role_key');
+    skip.add('to_role_key');
+    skip.add('from_role_id');
+    skip.add('to_role_id');
+  }
+
   if (typeof metadata.permission === 'string' && typeof metadata.enabled === 'boolean') {
-    const role = typeof metadata.role === 'string' ? ` for ${metadata.role}` : '';
+    const role =
+      typeof metadata.role === 'string'
+        ? ` for ${metadata.role}`
+        : typeof metadata.role_key === 'string'
+          ? ` for ${metadata.role_key}`
+          : '';
     lines.push(`${metadata.enabled ? 'Enabled' : 'Disabled'} ${metadata.permission}${role}`);
     skip.add('permission');
     skip.add('enabled');
     skip.add('role');
+    skip.add('role_key');
+    skip.add('role_id');
   }
 
   if (Array.isArray(metadata.changed)) {

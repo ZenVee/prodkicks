@@ -1,27 +1,30 @@
 import { useEffect, useState } from 'react';
-import type { AccessRequest, EmployeeRole } from '@/types';
-import { authService, assignableRolesFor } from '@/services/authService';
-import { useAuth } from '@/hooks/useAuth';
+import type { AccessRequest, StaffRoleRecord } from '@/types';
+import { authService } from '@/services/authService';
 import { useToast } from '@/hooks/useToast';
 import { mapSupabaseError } from '@/utils/errors';
 import { formatDateTime } from '@/utils/format';
 
 export default function PortalAccess() {
-  const { role } = useAuth();
   const { showToast } = useToast();
   const [requests, setRequests] = useState<AccessRequest[]>([]);
+  const [roles, setRoles] = useState<StaffRoleRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedRoles, setSelectedRoles] = useState<Record<string, Exclude<EmployeeRole, 'developer'>>>({});
-  const assignable = assignableRolesFor(role);
+  const [selectedRoles, setSelectedRoles] = useState<Record<string, string>>({});
 
   const load = async () => {
     setLoading(true);
     try {
-      const rows = await authService.listPendingRequests();
+      const [rows, assignable] = await Promise.all([
+        authService.listPendingRequests(),
+        authService.listAssignableRoles(),
+      ]);
       setRequests(rows);
-      const defaults: Record<string, Exclude<EmployeeRole, 'developer'>> = {};
+      setRoles(assignable);
+      const defaultRoleId = assignable.find((r) => r.key === 'staff')?.id ?? assignable[0]?.id ?? '';
+      const defaults: Record<string, string> = {};
       for (const row of rows) {
-        defaults[row.id] = assignable[assignable.length - 1] ?? 'staff';
+        defaults[row.id] = defaultRoleId;
       }
       setSelectedRoles(defaults);
     } catch (err) {
@@ -36,8 +39,13 @@ export default function PortalAccess() {
   }, []);
 
   const approve = async (id: string) => {
+    const roleId = selectedRoles[id];
+    if (!roleId) {
+      showToast('Select a role before approving', 'error');
+      return;
+    }
     try {
-      await authService.approve(id, selectedRoles[id] ?? 'staff');
+      await authService.approve(id, roleId);
       showToast('Access approved', 'success');
       await load();
     } catch (err) {
@@ -99,25 +107,25 @@ export default function PortalAccess() {
                 </td>
                 <td className="px-4 py-3">
                   <select
-                    value={selectedRoles[req.id] ?? 'staff'}
+                    value={selectedRoles[req.id] ?? ''}
                     onChange={(e) =>
                       setSelectedRoles((prev) => ({
                         ...prev,
-                        [req.id]: e.target.value as Exclude<EmployeeRole, 'developer'>,
+                        [req.id]: e.target.value,
                       }))
                     }
                     className="portal-input"
-                    disabled={assignable.length === 0}
+                    disabled={roles.length === 0}
                   >
-                    {assignable.map((r) => (
-                      <option key={r} value={r}>{r}</option>
+                    {roles.map((r) => (
+                      <option key={r.id} value={r.id}>{r.label}</option>
                     ))}
                   </select>
                 </td>
                 <td className="px-4 py-3 text-right space-x-2">
                   <button
                     onClick={() => approve(req.id)}
-                    disabled={assignable.length === 0}
+                    disabled={roles.length === 0}
                     className="px-3 py-1.5 text-xs uppercase tracking-wider bg-lime text-ink font-medium disabled:opacity-40"
                   >
                     Approve
