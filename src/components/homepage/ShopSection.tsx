@@ -4,19 +4,11 @@ import type { Product, ProductCategory } from '@/types';
 import { productService } from '@/services/productService';
 import ProductCard from '@/components/products/ProductCard';
 import { ProductCardSkeleton } from '@/components/common/Skeleton';
+import { useSiteSettings } from '@/hooks/useSiteSettings';
+import { DEFAULT_PRODUCT_CATEGORIES } from '@/data/productCategories';
 
 type FilterCategory = ProductCategory | 'all' | 'new-releases' | 'limited';
 type SortOption = 'newest' | 'name-az' | 'price-low' | 'price-high';
-
-const filterButtons: { label: string; value: FilterCategory }[] = [
-  { label: 'ALL', value: 'all' },
-  { label: 'FOOTWEAR', value: 'footwear' },
-  { label: 'TOPS', value: 'tops' },
-  { label: 'BOTTOMS', value: 'bottoms' },
-  { label: 'ACCESSORIES', value: 'accessories' },
-  { label: 'NEW RELEASES', value: 'new-releases' },
-  { label: 'LIMITED', value: 'limited' },
-];
 
 const sortOptions: { label: string; value: SortOption }[] = [
   { label: 'Newest', value: 'newest' },
@@ -26,6 +18,19 @@ const sortOptions: { label: string; value: SortOption }[] = [
 ];
 
 export default function ShopSection({ featuredProductIds }: { featuredProductIds?: string[] } = {}) {
+  const { settings } = useSiteSettings();
+  const filterButtons = useMemo<{ label: string; value: FilterCategory }[]>(
+    () => [
+      { label: 'ALL', value: 'all' },
+      ...(settings.productCategories.length > 0
+        ? settings.productCategories
+        : DEFAULT_PRODUCT_CATEGORIES
+      ).map((c) => ({ label: c.label.toUpperCase(), value: c.slug })),
+      { label: 'NEW RELEASES', value: 'new-releases' },
+      { label: 'LIMITED', value: 'limited' },
+    ],
+    [settings.productCategories],
+  );
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterCategory>('all');

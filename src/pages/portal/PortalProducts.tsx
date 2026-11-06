@@ -4,23 +4,17 @@ import { Plus, Search, Edit2, Copy, Archive, Trash2 } from 'lucide-react';
 import type { Product, ProductCategory, ProductStatus } from '@/types';
 import { productService } from '@/services/productService';
 import { useToast } from '@/hooks/useToast';
+import { useSiteSettings } from '@/hooks/useSiteSettings';
 import Modal from '@/components/common/Modal';
 import { formatPrice, formatRelativeTime } from '@/utils/format';
 import { mapSupabaseError } from '@/utils/errors';
+import { DEFAULT_PRODUCT_CATEGORIES } from '@/data/productCategories';
 
 const statusColors: Record<ProductStatus, string> = {
   published: 'text-lime',
   draft: 'text-bone-muted',
   archived: 'text-bone-muted/50 line-through',
 };
-
-const categoryFilters: { label: string; value: ProductCategory | 'all' }[] = [
-  { label: 'All', value: 'all' },
-  { label: 'Footwear', value: 'footwear' },
-  { label: 'Tops', value: 'tops' },
-  { label: 'Bottoms', value: 'bottoms' },
-  { label: 'Accessories', value: 'accessories' },
-];
 
 const statusFilters: { label: string; value: ProductStatus | 'all' }[] = [
   { label: 'All Status', value: 'all' },
@@ -83,6 +77,17 @@ function ProductActions({
 
 export default function PortalProducts() {
   const { showToast } = useToast();
+  const { settings } = useSiteSettings();
+  const categoryFilters = useMemo(
+    () => [
+      { label: 'All', value: 'all' as const },
+      ...(settings.productCategories.length > 0
+        ? settings.productCategories
+        : DEFAULT_PRODUCT_CATEGORIES
+      ).map((c) => ({ label: c.label, value: c.slug })),
+    ],
+    [settings.productCategories],
+  );
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
