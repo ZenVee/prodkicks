@@ -1,4 +1,24 @@
-export type ProductCategory = 'footwear' | 'tops' | 'bottoms' | 'accessories';
+/** Stored on products as a slug from SiteSettings.productCategories */
+export type ProductCategory = string;
+
+/** Key into the curated product-category icon catalog */
+export type ProductCategoryIcon = string;
+
+export type ProductCategoryIconGroup = 'apparel' | 'footwear' | 'accessories' | 'general';
+
+export interface ProductCategoryIconOption {
+  value: ProductCategoryIcon;
+  label: string;
+  group: ProductCategoryIconGroup;
+  keywords: string[];
+}
+
+export interface ProductCategoryDef {
+  id: string;
+  slug: string;
+  label: string;
+  icon: ProductCategoryIcon;
+}
 
 export type ProductStatus = 'draft' | 'published' | 'archived';
 
@@ -125,7 +145,46 @@ export type Permission =
   | 'accounts.disable'
   | 'permissions.view'
   | 'permissions.manage'
-  | 'audit.view';
+  | 'audit.view'
+  | 'sales.create'
+  | 'sales.edit'
+  | 'sales.view'
+  | 'sales.delete'
+  | 'payroll.process';
+
+export interface SalesAssignee {
+  id: string;
+  fullName: string | null;
+  discordUsername: string | null;
+}
+
+export interface CommissionSale {
+  id: string;
+  productId: string | null;
+  productName: string;
+  productSku: string;
+  salePrice: number;
+  commissionPercentage: number;
+  commissionAmount: number;
+  soldBy: string;
+  soldByName: string | null;
+  soldAt: string;
+  payrollRunId: string | null;
+  paidAt: string | null;
+}
+
+export interface PayrollBonusInput {
+  staffAccountId: string;
+  amount: number;
+  note?: string;
+}
+
+export interface UnpaidPayrollEmployee {
+  staffAccountId: string;
+  staffName: string | null;
+  sales: CommissionSale[];
+  commissionTotal: number;
+}
 
 export interface StaffAccount {
   id: string;
@@ -196,6 +255,8 @@ export interface SiteSettings {
   footerText: string;
   seoTitle: string;
   seoDescription: string;
+  commissionPercentage: number;
+  productCategories: ProductCategoryDef[];
 }
 
 export type ArticleStatus = 'draft' | 'published';

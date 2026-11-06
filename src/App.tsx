@@ -26,6 +26,8 @@ import PortalSettings from '@/pages/portal/PortalSettings';
 import PortalAccess from '@/pages/portal/PortalAccess';
 import PortalPermissions from '@/pages/portal/PortalPermissions';
 import PortalAudit from '@/pages/portal/PortalAudit';
+import PortalSales from '@/pages/portal/PortalSales';
+import PortalPayroll from '@/pages/portal/PortalPayroll';
 import MagazinePage from '@/pages/public/MagazinePage';
 import ArticlePage from '@/pages/public/ArticlePage';
 
@@ -63,6 +65,13 @@ export default function App() {
                   <Route path="team" element={<PortalTeam />} />
                   <Route path="homepage" element={<PortalHomepage />} />
                   <Route path="settings" element={<PortalSettings />} />
+                  <Route element={<RequirePermission permission="sales.view" />}>
+                    <Route path="sales" element={<PortalSales />} />
+                  </Route>
+                  <Route path="sales/log" element={<Navigate to="/portal/sales" replace />} />
+                  <Route element={<RequirePermission permission="payroll.process" />}>
+                    <Route path="payroll" element={<PortalPayroll />} />
+                  </Route>
                   <Route element={<RequirePermission permission="accounts.view" />}>
                     <Route path="access" element={<PortalAccess />} />
                   </Route>

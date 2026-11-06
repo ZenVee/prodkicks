@@ -16,6 +16,7 @@ import {
   KeyRound,
   ScrollText,
   Newspaper,
+  CircleDollarSign,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import type { Permission } from '@/types';
@@ -36,6 +37,7 @@ const navItems: NavItem[] = [
   { to: '/portal/drops', label: 'Drops', icon: Calendar, permission: 'drops.view' },
   { to: '/portal/magazine', label: 'Magazine', icon: Newspaper, permission: 'magazine.view' },
   { to: '/portal/team', label: 'Team', icon: Users, anyPermission: ['team.view', 'accounts.view'] },
+  { to: '/portal/sales', label: 'Sales', icon: CircleDollarSign, anyPermission: ['sales.view', 'sales.create'] },
   { to: '/portal/homepage', label: 'Homepage', icon: Home, permission: 'homepage.edit' },
   { to: '/portal/settings', label: 'Settings', icon: Settings, permission: 'settings.view' },
   { to: '/portal/access', label: 'Access', icon: ShieldCheck, permission: 'accounts.view' },

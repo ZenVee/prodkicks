@@ -151,8 +151,57 @@ create table public.site_settings (
   footer_text text not null default '',
   seo_title text not null default '',
   seo_description text not null default '',
-  updated_at timestamptz not null default now()
+  commission_percentage numeric not null default 0,
+  product_categories jsonb not null default '[
+    {"id":"cat_footwear","slug":"footwear","label":"Footwear","icon":"footprints"},
+    {"id":"cat_tops","slug":"tops","label":"Tops","icon":"shirt"},
+    {"id":"cat_bottoms","slug":"bottoms","label":"Bottoms","icon":"pants"},
+    {"id":"cat_accessories","slug":"accessories","label":"Accessories","icon":"watch"}
+  ]'::jsonb,
+  updated_at timestamptz not null default now(),
+  constraint site_settings_commission_percentage_nonneg check (commission_percentage >= 0)
 );
+
+create table public.payroll_runs (
+  id uuid primary key default gen_random_uuid(),
+  processed_by uuid not null references public.staff_accounts (id),
+  processed_at timestamptz not null default now()
+);
+
+create index payroll_runs_processed_at_idx on public.payroll_runs (processed_at desc);
+
+create table public.commission_sales (
+  id uuid primary key default gen_random_uuid(),
+  product_id text references public.products (id) on delete set null,
+  product_name text not null,
+  product_sku text not null default '',
+  sale_price numeric not null,
+  commission_percentage numeric not null,
+  commission_amount numeric not null,
+  sold_by uuid not null references public.staff_accounts (id),
+  sold_at timestamptz not null default now(),
+  payroll_run_id uuid references public.payroll_runs (id),
+  paid_at timestamptz,
+  constraint commission_sales_sale_price_nonneg check (sale_price >= 0),
+  constraint commission_sales_commission_percentage_nonneg check (commission_percentage >= 0),
+  constraint commission_sales_commission_amount_nonneg check (commission_amount >= 0)
+);
+
+create index commission_sales_sold_at_idx on public.commission_sales (sold_at desc);
+create index commission_sales_sold_by_idx on public.commission_sales (sold_by);
+create index commission_sales_unpaid_idx on public.commission_sales (sold_by)
+  where payroll_run_id is null;
+
+create table public.payroll_bonuses (
+  id uuid primary key default gen_random_uuid(),
+  payroll_run_id uuid not null references public.payroll_runs (id) on delete cascade,
+  staff_account_id uuid not null references public.staff_accounts (id),
+  amount numeric not null,
+  note text not null default '',
+  constraint payroll_bonuses_amount_positive check (amount > 0)
+);
+
+create index payroll_bonuses_run_idx on public.payroll_bonuses (payroll_run_id);
 
 create table public.articles (
   id text primary key,
@@ -976,6 +1025,329 @@ begin
 end;
 $$;
 
+create or replace function public.log_commission_sale(p_product_id text)
+returns public.commission_sales
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid := auth.uid();
+  prod public.products%rowtype;
+  pct numeric;
+  amount numeric;
+  sale public.commission_sales%rowtype;
+begin
+  if uid is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  if not public.has_permission('sales.create') then
+    raise exception 'Missing permission: sales.create';
+  end if;
+
+  select * into prod from public.products where id = p_product_id;
+  if not found then
+    raise exception 'Product not found';
+  end if;
+
+  select coalesce(ss.commission_percentage, 0)
+  into pct
+  from public.site_settings ss
+  where ss.id = 'main';
+
+  if pct is null then
+    pct := 0;
+  end if;
+
+  amount := round(prod.price * (pct / 100.0), 2);
+
+  insert into public.commission_sales (
+    product_id,
+    product_name,
+    product_sku,
+    sale_price,
+    commission_percentage,
+    commission_amount,
+    sold_by
+  )
+  values (
+    prod.id,
+    prod.name,
+    coalesce(prod.sku, ''),
+    prod.price,
+    pct,
+    amount,
+    uid
+  )
+  returning * into sale;
+
+  insert into public.staff_audit_log (actor_user_id, target_user_id, action, metadata)
+  values (
+    uid,
+    uid,
+    'commission.sale_logged',
+    jsonb_build_object(
+      'sale_id', sale.id,
+      'product_id', sale.product_id,
+      'product_name', sale.product_name,
+      'sale_price', sale.sale_price,
+      'commission_amount', sale.commission_amount
+    )
+  );
+
+  return sale;
+end;
+$$;
+
+create or replace function public.process_payroll(p_bonuses jsonb default '[]'::jsonb)
+returns public.payroll_runs
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid := auth.uid();
+  run public.payroll_runs%rowtype;
+  bonus jsonb;
+  staff_id uuid;
+  bonus_amount numeric;
+  bonus_note text;
+  unpaid_count integer;
+begin
+  if uid is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  if not public.has_permission('payroll.process') then
+    raise exception 'Missing permission: payroll.process';
+  end if;
+
+  select count(*) into unpaid_count
+  from public.commission_sales
+  where payroll_run_id is null;
+
+  if unpaid_count = 0 then
+    raise exception 'No unpaid sales to process';
+  end if;
+
+  if p_bonuses is null then
+    p_bonuses := '[]'::jsonb;
+  end if;
+
+  if jsonb_typeof(p_bonuses) <> 'array' then
+    raise exception 'Bonuses must be a JSON array';
+  end if;
+
+  insert into public.payroll_runs (processed_by)
+  values (uid)
+  returning * into run;
+
+  for bonus in select * from jsonb_array_elements(p_bonuses)
+  loop
+    staff_id := nullif(bonus->>'staff_account_id', '')::uuid;
+    bonus_amount := nullif(bonus->>'amount', '')::numeric;
+    bonus_note := coalesce(bonus->>'note', '');
+
+    if staff_id is null or bonus_amount is null or bonus_amount <= 0 then
+      continue;
+    end if;
+
+    if not exists (
+      select 1
+      from public.commission_sales cs
+      where cs.sold_by = staff_id
+        and cs.payroll_run_id is null
+    ) then
+      raise exception 'Bonus staff has no unpaid sales: %', staff_id;
+    end if;
+
+    insert into public.payroll_bonuses (payroll_run_id, staff_account_id, amount, note)
+    values (run.id, staff_id, bonus_amount, bonus_note);
+  end loop;
+
+  update public.commission_sales
+  set
+    payroll_run_id = run.id,
+    paid_at = run.processed_at
+  where payroll_run_id is null;
+
+  insert into public.staff_audit_log (actor_user_id, action, metadata)
+  values (
+    uid,
+    'payroll.processed',
+    jsonb_build_object(
+      'payroll_run_id', run.id,
+      'sales_count', unpaid_count,
+      'bonuses', p_bonuses
+    )
+  );
+
+  return run;
+end;
+$$;
+
+create or replace function public.list_sales_assignees()
+returns table (
+  id uuid,
+  full_name text,
+  discord_username text
+)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  if not public.has_permission('sales.edit') then
+    raise exception 'Missing permission: sales.edit';
+  end if;
+
+  return query
+  select sa.id, sa.full_name, sa.discord_username
+  from public.staff_accounts sa
+  where sa.status = 'approved'
+  order by coalesce(nullif(btrim(sa.full_name), ''), sa.discord_username, sa.id::text);
+end;
+$$;
+
+create or replace function public.update_commission_sale(
+  p_sale_id uuid,
+  p_product_id text,
+  p_sold_by uuid
+)
+returns public.commission_sales
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid := auth.uid();
+  sale public.commission_sales%rowtype;
+  prod public.products%rowtype;
+  seller public.staff_accounts%rowtype;
+  pct numeric;
+  amount numeric;
+begin
+  if uid is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  if not public.has_permission('sales.edit') then
+    raise exception 'Missing permission: sales.edit';
+  end if;
+
+  select * into sale from public.commission_sales where id = p_sale_id for update;
+  if not found then
+    raise exception 'Sale not found';
+  end if;
+
+  if sale.payroll_run_id is not null then
+    raise exception 'Paid sales cannot be edited';
+  end if;
+
+  select * into prod from public.products where id = p_product_id;
+  if not found then
+    raise exception 'Product not found';
+  end if;
+
+  select * into seller from public.staff_accounts where id = p_sold_by;
+  if not found or seller.status is distinct from 'approved' then
+    raise exception 'Seller must be an approved staff account';
+  end if;
+
+  select coalesce(ss.commission_percentage, 0)
+  into pct
+  from public.site_settings ss
+  where ss.id = 'main';
+
+  if pct is null then
+    pct := 0;
+  end if;
+
+  amount := round(prod.price * (pct / 100.0), 2);
+
+  update public.commission_sales
+  set
+    product_id = prod.id,
+    product_name = prod.name,
+    product_sku = coalesce(prod.sku, ''),
+    sale_price = prod.price,
+    commission_percentage = pct,
+    commission_amount = amount,
+    sold_by = seller.id
+  where id = sale.id
+  returning * into sale;
+
+  insert into public.staff_audit_log (actor_user_id, target_user_id, action, metadata)
+  values (
+    uid,
+    seller.id,
+    'commission.sale_updated',
+    jsonb_build_object(
+      'sale_id', sale.id,
+      'product_id', sale.product_id,
+      'product_name', sale.product_name,
+      'sold_by', sale.sold_by,
+      'sale_price', sale.sale_price,
+      'commission_amount', sale.commission_amount
+    )
+  );
+
+  return sale;
+end;
+$$;
+
+create or replace function public.delete_commission_sale(p_sale_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid := auth.uid();
+  sale public.commission_sales%rowtype;
+begin
+  if uid is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  if not public.has_permission('sales.delete') then
+    raise exception 'Missing permission: sales.delete';
+  end if;
+
+  select * into sale from public.commission_sales where id = p_sale_id for update;
+  if not found then
+    raise exception 'Sale not found';
+  end if;
+
+  if sale.payroll_run_id is not null then
+    raise exception 'Paid sales cannot be deleted';
+  end if;
+
+  delete from public.commission_sales where id = sale.id;
+
+  insert into public.staff_audit_log (actor_user_id, target_user_id, action, metadata)
+  values (
+    uid,
+    sale.sold_by,
+    'commission.sale_deleted',
+    jsonb_build_object(
+      'sale_id', sale.id,
+      'product_id', sale.product_id,
+      'product_name', sale.product_name,
+      'sold_by', sale.sold_by,
+      'sale_price', sale.sale_price,
+      'commission_amount', sale.commission_amount
+    )
+  );
+end;
+$$;
+
 create or replace function public.enforce_role_permissions_no_developer()
 returns trigger
 language plpgsql
@@ -1198,6 +1570,9 @@ alter table public.team_members enable row level security;
 alter table public.homepage_content enable row level security;
 alter table public.site_settings enable row level security;
 alter table public.articles enable row level security;
+alter table public.payroll_runs enable row level security;
+alter table public.commission_sales enable row level security;
+alter table public.payroll_bonuses enable row level security;
 
 create policy staff_roles_select
   on public.staff_roles
@@ -1357,6 +1732,28 @@ create policy site_settings_insert on public.site_settings
   for insert to authenticated
   with check (public.has_permission('settings.edit'));
 
+create policy commission_sales_select
+  on public.commission_sales
+  for select
+  to authenticated
+  using (
+    public.has_permission('sales.view')
+    or public.has_permission('payroll.process')
+    or sold_by = auth.uid()
+  );
+
+create policy payroll_runs_select
+  on public.payroll_runs
+  for select
+  to authenticated
+  using (public.has_permission('payroll.process'));
+
+create policy payroll_bonuses_select
+  on public.payroll_bonuses
+  for select
+  to authenticated
+  using (public.has_permission('payroll.process'));
+
 create policy articles_public_select on public.articles
   for select to anon, authenticated
   using (
@@ -1440,6 +1837,21 @@ grant execute on function public.current_staff_role_key() to authenticated;
 revoke all on function public.current_staff_role() from public, anon, authenticated;
 grant execute on function public.current_staff_role() to authenticated;
 
+revoke all on function public.log_commission_sale(text) from public, anon, authenticated;
+grant execute on function public.log_commission_sale(text) to authenticated;
+
+revoke all on function public.process_payroll(jsonb) from public, anon, authenticated;
+grant execute on function public.process_payroll(jsonb) to authenticated;
+
+revoke all on function public.list_sales_assignees() from public, anon, authenticated;
+grant execute on function public.list_sales_assignees() to authenticated;
+
+revoke all on function public.update_commission_sale(uuid, text, uuid) from public, anon, authenticated;
+grant execute on function public.update_commission_sale(uuid, text, uuid) to authenticated;
+
+revoke all on function public.delete_commission_sale(uuid) from public, anon, authenticated;
+grant execute on function public.delete_commission_sale(uuid) to authenticated;
+
 revoke all on public.staff_roles from public, anon, authenticated;
 grant select on public.staff_roles to authenticated;
 
@@ -1461,6 +1873,15 @@ grant insert, update on public.homepage_content, public.site_settings to authent
 
 grant select on public.articles to anon, authenticated;
 grant insert, update, delete on public.articles to authenticated;
+
+revoke all on public.commission_sales from public, anon, authenticated;
+grant select on public.commission_sales to authenticated;
+
+revoke all on public.payroll_runs from public, anon, authenticated;
+grant select on public.payroll_runs to authenticated;
+
+revoke all on public.payroll_bonuses from public, anon, authenticated;
+grant select on public.payroll_bonuses to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Seed data (permissions, roles, role_permissions, required defaults)
@@ -1497,7 +1918,12 @@ insert into public.permissions (key, category, label, sort_order) values
   ('accounts.disable', 'Accounts', 'Disable accounts', 640),
   ('permissions.view', 'Permissions', 'View permissions', 710),
   ('permissions.manage', 'Permissions', 'Manage permissions', 720),
-  ('audit.view', 'Audit', 'View audit log', 810);
+  ('audit.view', 'Audit', 'View audit log', 810),
+  ('sales.create', 'Sales', 'Log sales', 820),
+  ('sales.edit', 'Sales', 'Edit sales', 825),
+  ('sales.view', 'Sales', 'View sales log', 830),
+  ('sales.delete', 'Sales', 'Delete sales', 835),
+  ('payroll.process', 'Payroll', 'Process payroll', 840);
 
 insert into public.staff_roles (key, label, is_system, sort_order) values
   ('developer', 'Developer', true, 0),
@@ -1515,7 +1941,8 @@ where sr.key = 'staff'
     'collections.view', 'collections.create', 'collections.edit',
     'drops.view',
     'team.view',
-    'magazine.view', 'magazine.create', 'magazine.edit'
+    'magazine.view', 'magazine.create', 'magazine.edit',
+    'sales.create', 'sales.view'
   );
 
 insert into public.role_permissions (role_id, permission_key)
@@ -1531,7 +1958,8 @@ where sr.key = 'manager'
     'homepage.edit',
     'settings.view',
     'accounts.view', 'accounts.approve', 'accounts.decline',
-    'magazine.view', 'magazine.create', 'magazine.edit', 'magazine.delete', 'magazine.publish'
+    'magazine.view', 'magazine.create', 'magazine.edit', 'magazine.delete', 'magazine.publish',
+    'sales.create', 'sales.edit', 'sales.view', 'sales.delete', 'payroll.process'
   );
 
 insert into public.role_permissions (role_id, permission_key)

@@ -422,6 +422,8 @@ export type Database = {
           footer_text: string;
           seo_title: string;
           seo_description: string;
+          commission_percentage: number;
+          product_categories: Json;
           updated_at: string;
         };
         Insert: {
@@ -433,6 +435,8 @@ export type Database = {
           footer_text?: string;
           seo_title?: string;
           seo_description?: string;
+          commission_percentage?: number;
+          product_categories?: Json;
           updated_at?: string;
         };
         Update: {
@@ -444,7 +448,93 @@ export type Database = {
           footer_text?: string;
           seo_title?: string;
           seo_description?: string;
+          commission_percentage?: number;
+          product_categories?: Json;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+      payroll_runs: {
+        Row: {
+          id: string;
+          processed_by: string;
+          processed_at: string;
+        };
+        Insert: {
+          id?: string;
+          processed_by: string;
+          processed_at?: string;
+        };
+        Update: {
+          id?: string;
+          processed_by?: string;
+          processed_at?: string;
+        };
+        Relationships: [];
+      };
+      commission_sales: {
+        Row: {
+          id: string;
+          product_id: string | null;
+          product_name: string;
+          product_sku: string;
+          sale_price: number;
+          commission_percentage: number;
+          commission_amount: number;
+          sold_by: string;
+          sold_at: string;
+          payroll_run_id: string | null;
+          paid_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          product_id?: string | null;
+          product_name: string;
+          product_sku?: string;
+          sale_price: number;
+          commission_percentage: number;
+          commission_amount: number;
+          sold_by: string;
+          sold_at?: string;
+          payroll_run_id?: string | null;
+          paid_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          product_id?: string | null;
+          product_name?: string;
+          product_sku?: string;
+          sale_price?: number;
+          commission_percentage?: number;
+          commission_amount?: number;
+          sold_by?: string;
+          sold_at?: string;
+          payroll_run_id?: string | null;
+          paid_at?: string | null;
+        };
+        Relationships: [];
+      };
+      payroll_bonuses: {
+        Row: {
+          id: string;
+          payroll_run_id: string;
+          staff_account_id: string;
+          amount: number;
+          note: string;
+        };
+        Insert: {
+          id?: string;
+          payroll_run_id: string;
+          staff_account_id: string;
+          amount: number;
+          note?: string;
+        };
+        Update: {
+          id?: string;
+          payroll_run_id?: string;
+          staff_account_id?: string;
+          amount?: number;
+          note?: string;
         };
         Relationships: [];
       };
@@ -454,6 +544,26 @@ export type Database = {
       has_permission: {
         Args: { requested_permission: string };
         Returns: boolean;
+      };
+      log_commission_sale: {
+        Args: { p_product_id: string };
+        Returns: Database['public']['Tables']['commission_sales']['Row'];
+      };
+      process_payroll: {
+        Args: { p_bonuses?: Json };
+        Returns: Database['public']['Tables']['payroll_runs']['Row'];
+      };
+      list_sales_assignees: {
+        Args: Record<string, never>;
+        Returns: { id: string; full_name: string | null; discord_username: string | null }[];
+      };
+      update_commission_sale: {
+        Args: { p_sale_id: string; p_product_id: string; p_sold_by: string };
+        Returns: Database['public']['Tables']['commission_sales']['Row'];
+      };
+      delete_commission_sale: {
+        Args: { p_sale_id: string };
+        Returns: undefined;
       };
       submit_staff_profile: {
         Args: { full_name: string; state_id: string };

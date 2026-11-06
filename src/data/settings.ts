@@ -1,4 +1,5 @@
 import type { SiteSettings, HomepageContent } from '@/types';
+import { DEFAULT_PRODUCT_CATEGORIES } from '@/data/productCategories';
 
 export const mockSettings: SiteSettings = {
   companyName: 'Prod Kicks',
@@ -8,6 +9,8 @@ export const mockSettings: SiteSettings = {
   footerText: 'Prod Kicks is a modern sneaker and streetwear retailer. Footwear, apparel, culture.',
   seoTitle: 'PROD KICKS — Footwear / Apparel / Culture',
   seoDescription: 'Prod Kicks is a modern sneaker and streetwear retailer. Footwear, apparel, culture.',
+  commissionPercentage: 10,
+  productCategories: DEFAULT_PRODUCT_CATEGORIES.map((c) => ({ ...c })),
 };
 
 export const mockHomepageContent: HomepageContent = {
