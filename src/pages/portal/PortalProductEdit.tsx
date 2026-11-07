@@ -53,6 +53,7 @@ export default function PortalProductEdit() {
     description: '',
     status: 'draft',
     salesOnly: false,
+    gangBizItem: false,
     availability: 'available',
     labels: [],
     collectionId: null,
@@ -196,7 +197,11 @@ export default function PortalProductEdit() {
             >
               {statusLabel}
             </span>
-            {product.salesOnly ? (
+            {product.gangBizItem ? (
+              <span className="text-[10px] tracking-wider uppercase px-2 py-1 border border-white/15 text-bone-muted">
+                Gang / Biz
+              </span>
+            ) : product.salesOnly ? (
               <span className="text-[10px] tracking-wider uppercase px-2 py-1 border border-white/15 text-bone-muted">
                 Sales only
               </span>
@@ -491,9 +496,33 @@ export default function PortalProductEdit() {
             <label className="mt-4 flex items-start gap-3 cursor-pointer group">
               <input
                 type="checkbox"
-                checked={product.salesOnly ?? false}
-                onChange={(e) => update('salesOnly', e.target.checked)}
+                checked={product.gangBizItem ?? false}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setProduct((prev) => ({
+                    ...prev,
+                    gangBizItem: checked,
+                    salesOnly: checked ? true : prev.salesOnly,
+                  }));
+                }}
                 className="mt-0.5 accent-lime"
+              />
+              <span>
+                <span className="block text-sm text-bone group-hover:text-white transition-colors">
+                  Gang / Biz Item
+                </span>
+                <span className="block text-xs text-bone-muted mt-0.5 leading-snug">
+                  Requires a gang/business name when logging a sale. Also enables Sales only.
+                </span>
+              </span>
+            </label>
+            <label className="mt-4 flex items-start gap-3 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={product.salesOnly ?? false}
+                disabled={product.gangBizItem ?? false}
+                onChange={(e) => update('salesOnly', e.target.checked)}
+                className="mt-0.5 accent-lime disabled:opacity-50"
               />
               <span>
                 <span className="block text-sm text-bone group-hover:text-white transition-colors">

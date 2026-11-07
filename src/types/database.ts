@@ -173,6 +173,7 @@ export type Database = {
           description: string;
           status: string;
           sales_only: boolean;
+          gang_biz_item: boolean;
           availability: string;
           labels: string[];
           collection_id: string | null;
@@ -193,6 +194,7 @@ export type Database = {
           description?: string;
           status?: string;
           sales_only?: boolean;
+          gang_biz_item?: boolean;
           availability?: string;
           labels?: string[];
           collection_id?: string | null;
@@ -213,6 +215,7 @@ export type Database = {
           description?: string;
           status?: string;
           sales_only?: boolean;
+          gang_biz_item?: boolean;
           availability?: string;
           labels?: string[];
           collection_id?: string | null;
@@ -493,6 +496,7 @@ export type Database = {
           product_id: string | null;
           product_name: string;
           product_sku: string;
+          gang_business_name: string;
           sale_price: number;
           commission_percentage: number;
           commission_amount: number;
@@ -506,6 +510,7 @@ export type Database = {
           product_id?: string | null;
           product_name: string;
           product_sku?: string;
+          gang_business_name?: string;
           sale_price: number;
           commission_percentage: number;
           commission_amount: number;
@@ -519,6 +524,7 @@ export type Database = {
           product_id?: string | null;
           product_name?: string;
           product_sku?: string;
+          gang_business_name?: string;
           sale_price?: number;
           commission_percentage?: number;
           commission_amount?: number;
@@ -561,7 +567,7 @@ export type Database = {
         Returns: boolean;
       };
       log_commission_sale: {
-        Args: { p_product_id: string };
+        Args: { p_product_id: string; p_gang_business_name?: string };
         Returns: Database['public']['Tables']['commission_sales']['Row'];
       };
       process_payroll: {
@@ -577,7 +583,12 @@ export type Database = {
         Returns: { id: string; full_name: string | null; discord_username: string | null }[];
       };
       update_commission_sale: {
-        Args: { p_sale_id: string; p_product_id: string; p_sold_by: string };
+        Args: {
+          p_sale_id: string;
+          p_product_id: string;
+          p_sold_by: string;
+          p_gang_business_name?: string;
+        };
         Returns: Database['public']['Tables']['commission_sales']['Row'];
       };
       delete_commission_sale: {

@@ -100,6 +100,7 @@ create table public.products (
   description text not null default '',
   status text not null default 'draft',
   sales_only boolean not null default false,
+  gang_biz_item boolean not null default false,
   availability text not null default 'available',
   labels text[] not null default '{}',
   collection_id text references public.collections (id) on delete set null,
@@ -182,6 +183,7 @@ create table public.commission_sales (
   product_id text references public.products (id) on delete set null,
   product_name text not null,
   product_sku text not null default '',
+  gang_business_name text not null default '',
   sale_price numeric not null,
   commission_percentage numeric not null,
   commission_amount numeric not null,
@@ -1065,7 +1067,10 @@ begin
 end;
 $$;
 
-create or replace function public.log_commission_sale(p_product_id text)
+create or replace function public.log_commission_sale(
+  p_product_id text,
+  p_gang_business_name text default ''
+)
 returns public.commission_sales
 language plpgsql
 security definer
@@ -1077,6 +1082,7 @@ declare
   pct numeric;
   amount numeric;
   sale public.commission_sales%rowtype;
+  gang_name text := btrim(coalesce(p_gang_business_name, ''));
 begin
   if uid is null then
     raise exception 'Not authenticated';
@@ -1089,6 +1095,14 @@ begin
   select * into prod from public.products where id = p_product_id;
   if not found then
     raise exception 'Product not found';
+  end if;
+
+  if prod.gang_biz_item and gang_name = '' then
+    raise exception 'Gang / Business Name is required for this product';
+  end if;
+
+  if not prod.gang_biz_item then
+    gang_name := '';
   end if;
 
   select coalesce(ss.commission_percentage, 0)
@@ -1106,6 +1120,7 @@ begin
     product_id,
     product_name,
     product_sku,
+    gang_business_name,
     sale_price,
     commission_percentage,
     commission_amount,
@@ -1115,6 +1130,7 @@ begin
     prod.id,
     prod.name,
     coalesce(prod.sku, ''),
+    gang_name,
     prod.price,
     pct,
     amount,
@@ -1131,6 +1147,7 @@ begin
       'sale_id', sale.id,
       'product_id', sale.product_id,
       'product_name', sale.product_name,
+      'gang_business_name', sale.gang_business_name,
       'sale_price', sale.sale_price,
       'commission_amount', sale.commission_amount
     )
@@ -1246,6 +1263,7 @@ begin
             'id', cs.id,
             'product_name', cs.product_name,
             'product_sku', cs.product_sku,
+            'gang_business_name', cs.gang_business_name,
             'sale_price', cs.sale_price,
             'commission_percentage', cs.commission_percentage,
             'commission_amount', cs.commission_amount,
@@ -1412,7 +1430,8 @@ $$;
 create or replace function public.update_commission_sale(
   p_sale_id uuid,
   p_product_id text,
-  p_sold_by uuid
+  p_sold_by uuid,
+  p_gang_business_name text default ''
 )
 returns public.commission_sales
 language plpgsql
@@ -1426,6 +1445,7 @@ declare
   seller public.staff_accounts%rowtype;
   pct numeric;
   amount numeric;
+  gang_name text := btrim(coalesce(p_gang_business_name, ''));
 begin
   if uid is null then
     raise exception 'Not authenticated';
@@ -1449,6 +1469,14 @@ begin
     raise exception 'Product not found';
   end if;
 
+  if prod.gang_biz_item and gang_name = '' then
+    raise exception 'Gang / Business Name is required for this product';
+  end if;
+
+  if not prod.gang_biz_item then
+    gang_name := '';
+  end if;
+
   select * into seller from public.staff_accounts where id = p_sold_by;
   if not found or seller.status is distinct from 'approved' then
     raise exception 'Seller must be an approved staff account';
@@ -1470,6 +1498,7 @@ begin
     product_id = prod.id,
     product_name = prod.name,
     product_sku = coalesce(prod.sku, ''),
+    gang_business_name = gang_name,
     sale_price = prod.price,
     commission_percentage = pct,
     commission_amount = amount,
@@ -1486,6 +1515,7 @@ begin
       'sale_id', sale.id,
       'product_id', sale.product_id,
       'product_name', sale.product_name,
+      'gang_business_name', sale.gang_business_name,
       'sold_by', sale.sold_by,
       'sale_price', sale.sale_price,
       'commission_amount', sale.commission_amount

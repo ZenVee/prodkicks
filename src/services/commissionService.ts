@@ -42,6 +42,7 @@ function mapSnapshotSale(raw: unknown): PayrollLogSale | null {
     id: asString(row.id),
     productName: asString(row.product_name ?? row.productName),
     productSku: asString(row.product_sku ?? row.productSku),
+    gangBusinessName: asString(row.gang_business_name ?? row.gangBusinessName),
     salePrice: asNumber(row.sale_price ?? row.salePrice),
     commissionPercentage: asNumber(row.commission_percentage ?? row.commissionPercentage),
     commissionAmount: asNumber(row.commission_amount ?? row.commissionAmount),
@@ -120,6 +121,7 @@ function buildMockSnapshot(
       id: sale.id,
       productName: sale.productName,
       productSku: sale.productSku,
+      gangBusinessName: sale.gangBusinessName,
       salePrice: sale.salePrice,
       commissionPercentage: sale.commissionPercentage,
       commissionAmount: sale.commissionAmount,
@@ -153,6 +155,7 @@ function mapSale(
     productId: row.product_id,
     productName: row.product_name,
     productSku: row.product_sku,
+    gangBusinessName: row.gang_business_name ?? '',
     salePrice: Number(row.sale_price),
     commissionPercentage: Number(row.commission_percentage),
     commissionAmount: Number(row.commission_amount),
@@ -204,13 +207,14 @@ function groupUnpaid(sales: CommissionSale[]): UnpaidPayrollEmployee[] {
 }
 
 export const commissionService = {
-  async logSale(productId: string): Promise<CommissionSale> {
+  async logSale(productId: string, gangBusinessName = ''): Promise<CommissionSale> {
     if (!isSupabaseConfigured) {
       const sale: CommissionSale = {
         id: `mock-${Date.now()}`,
         productId,
         productName: 'Mock product',
         productSku: 'MOCK',
+        gangBusinessName: gangBusinessName.trim(),
         salePrice: 100,
         commissionPercentage: 10,
         commissionAmount: 10,
@@ -226,6 +230,7 @@ export const commissionService = {
 
     const { data, error } = await getSupabase().rpc('log_commission_sale', {
       p_product_id: productId,
+      p_gang_business_name: gangBusinessName.trim(),
     });
     if (error) throw mapSupabaseError(error);
     const names = await resolveSellerNames([data.sold_by]);
@@ -372,7 +377,8 @@ export const commissionService = {
   async updateSale(
     saleId: string,
     productId: string,
-    soldBy: string
+    soldBy: string,
+    gangBusinessName = ''
   ): Promise<CommissionSale> {
     if (!isSupabaseConfigured) {
       const assignee = mockAssignees.find((a) => a.id === soldBy);
@@ -382,6 +388,7 @@ export const commissionService = {
               ...sale,
               productId,
               productName: sale.productName,
+              gangBusinessName: gangBusinessName.trim(),
               soldBy,
               soldByName: assignee?.fullName ?? assignee?.discordUsername ?? null,
             }
@@ -396,6 +403,7 @@ export const commissionService = {
       p_sale_id: saleId,
       p_product_id: productId,
       p_sold_by: soldBy,
+      p_gang_business_name: gangBusinessName.trim(),
     });
     if (error) throw mapSupabaseError(error);
     const names = await resolveSellerNames([data.sold_by]);

@@ -48,6 +48,7 @@ function fromRow(row: ProductRow): Product {
     description: row.description,
     status: row.status as Product['status'],
     salesOnly: row.sales_only ?? false,
+    gangBizItem: row.gang_biz_item ?? false,
     availability: row.availability as Product['availability'],
     labels: (row.labels ?? []) as Product['labels'],
     collectionId: row.collection_id,
@@ -70,7 +71,8 @@ function toInsert(data: Partial<Product>, id: string): Database['public']['Table
     color: data.color ?? 'Default',
     description: data.description ?? '',
     status: data.status ?? 'draft',
-    sales_only: data.salesOnly ?? false,
+    sales_only: data.gangBizItem ? true : (data.salesOnly ?? false),
+    gang_biz_item: data.gangBizItem ?? false,
     availability: data.availability ?? 'available',
     labels: data.labels ?? [],
     collection_id: data.collectionId ?? null,
@@ -90,7 +92,13 @@ function toUpdate(data: Partial<Product>): Database['public']['Tables']['product
   if (data.color !== undefined) update.color = data.color;
   if (data.description !== undefined) update.description = data.description;
   if (data.status !== undefined) update.status = data.status;
-  if (data.salesOnly !== undefined) update.sales_only = data.salesOnly;
+  if (data.gangBizItem !== undefined) {
+    update.gang_biz_item = data.gangBizItem;
+    if (data.gangBizItem) update.sales_only = true;
+  }
+  if (data.salesOnly !== undefined) {
+    update.sales_only = data.gangBizItem ? true : data.salesOnly;
+  }
   if (data.availability !== undefined) update.availability = data.availability;
   if (data.labels !== undefined) update.labels = data.labels;
   if (data.collectionId !== undefined) update.collection_id = data.collectionId;
@@ -231,7 +239,8 @@ export const productService = {
         color: data.color ?? 'Default',
         description: data.description ?? '',
         status: data.status ?? 'draft',
-        salesOnly: data.salesOnly ?? false,
+        salesOnly: data.gangBizItem ? true : (data.salesOnly ?? false),
+        gangBizItem: data.gangBizItem ?? false,
         availability: data.availability ?? 'available',
         labels: data.labels ?? [],
         collectionId: data.collectionId ?? null,

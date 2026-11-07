@@ -47,6 +47,8 @@ export interface Product {
   status: ProductStatus;
   /** When true, product is hidden from the storefront and used only for portal sales tracking. */
   salesOnly: boolean;
+  /** When true, sales require a gang/business name and Sales only is implied. */
+  gangBizItem: boolean;
   availability: ProductAvailability;
   labels: ProductLabel[];
   collectionId: string | null;
@@ -167,6 +169,7 @@ export interface CommissionSale {
   productId: string | null;
   productName: string;
   productSku: string;
+  gangBusinessName: string;
   salePrice: number;
   commissionPercentage: number;
   commissionAmount: number;
@@ -194,6 +197,7 @@ export interface PayrollLogSale {
   id: string;
   productName: string;
   productSku: string;
+  gangBusinessName: string;
   salePrice: number;
   commissionPercentage: number;
   commissionAmount: number;

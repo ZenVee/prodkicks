@@ -181,7 +181,12 @@ export default function PortalPayroll() {
                           <td className="px-5 py-2.5 text-xs text-bone-muted whitespace-nowrap">
                             {formatSoldAt(sale.soldAt)}
                           </td>
-                          <td className="px-5 py-2.5 text-sm text-bone">{sale.productName}</td>
+                          <td className="px-5 py-2.5">
+                            <p className="text-sm text-bone">{sale.productName}</p>
+                            {sale.gangBusinessName ? (
+                              <p className="text-[10px] text-bone-muted mt-0.5">{sale.gangBusinessName}</p>
+                            ) : null}
+                          </td>
                           <td className="px-5 py-2.5 text-sm text-bone text-right">
                             {formatPrice(sale.salePrice, currency)}
                           </td>

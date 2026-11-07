@@ -39,6 +39,7 @@ export default function PortalSales() {
   const [productQuery, setProductQuery] = useState('');
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [selectedSoldBy, setSelectedSoldBy] = useState('');
+  const [gangBusinessName, setGangBusinessName] = useState('');
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -85,6 +86,7 @@ export default function PortalSales() {
     setProductQuery('');
     setSelectedProductId(editSale.productId);
     setSelectedSoldBy(editSale.soldBy);
+    setGangBusinessName(editSale.gangBusinessName ?? '');
     commissionService
       .listAssignees()
       .then((nextAssignees) => {
@@ -139,6 +141,7 @@ export default function PortalSales() {
       return (
         sale.productName.toLowerCase().includes(q) ||
         sale.productSku.toLowerCase().includes(q) ||
+        sale.gangBusinessName.toLowerCase().includes(q) ||
         (sale.soldByName ?? '').toLowerCase().includes(q)
       );
     });
@@ -160,6 +163,8 @@ export default function PortalSales() {
   };
 
   const selectedProduct = products.find((p) => p.id === selectedProductId) ?? null;
+  const needsGangName = selectedProduct?.gangBizItem ?? false;
+  const gangNameReady = !needsGangName || gangBusinessName.trim().length > 0;
   const estimated = selectedProduct
     ? Number((selectedProduct.price * (pct / 100)).toFixed(2))
     : null;
@@ -167,14 +172,24 @@ export default function PortalSales() {
   const openNewSale = () => {
     setProductQuery('');
     setSelectedProductId(null);
+    setGangBusinessName('');
     setNewSaleOpen(true);
   };
 
+  const selectProduct = (productId: string) => {
+    setSelectedProductId(productId);
+    const next = products.find((p) => p.id === productId);
+    if (!next?.gangBizItem) setGangBusinessName('');
+  };
+
   const handleLogSale = async () => {
-    if (!selectedProductId || submitting) return;
+    if (!selectedProductId || submitting || !gangNameReady) return;
     setSubmitting(true);
     try {
-      const sale = await commissionService.logSale(selectedProductId);
+      const sale = await commissionService.logSale(
+        selectedProductId,
+        needsGangName ? gangBusinessName : ''
+      );
       setSales((prev) => [sale, ...prev]);
       showToast(`Logged sale: ${sale.productName}`, 'success');
       setNewSaleOpen(false);
@@ -186,13 +201,14 @@ export default function PortalSales() {
   };
 
   const handleSaveEdit = async () => {
-    if (!editSale || !selectedProductId || !selectedSoldBy || saving) return;
+    if (!editSale || !selectedProductId || !selectedSoldBy || saving || !gangNameReady) return;
     setSaving(true);
     try {
       const updated = await commissionService.updateSale(
         editSale.id,
         selectedProductId,
-        selectedSoldBy
+        selectedSoldBy,
+        needsGangName ? gangBusinessName : ''
       );
       setSales((prev) => prev.map((sale) => (sale.id === updated.id ? updated : sale)));
       showToast('Sale updated', 'success');
@@ -219,7 +235,7 @@ export default function PortalSales() {
     }
   };
 
-  const colSpan = showActions ? 7 : 6;
+  const colSpan = showActions ? 8 : 7;
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -266,7 +282,7 @@ export default function PortalSales() {
               type="search"
               value={logQuery}
               onChange={(e) => setLogQuery(e.target.value)}
-              placeholder="Search product or seller..."
+              placeholder="Search product, seller, or gang/biz..."
               className="portal-input pl-9"
             />
           </div>
@@ -333,6 +349,7 @@ export default function PortalSales() {
               <th className="text-left text-xs tracking-wider uppercase text-bone-muted font-medium px-4 py-3">When</th>
               <th className="text-left text-xs tracking-wider uppercase text-bone-muted font-medium px-4 py-3">Seller</th>
               <th className="text-left text-xs tracking-wider uppercase text-bone-muted font-medium px-4 py-3">Product</th>
+              <th className="text-left text-xs tracking-wider uppercase text-bone-muted font-medium px-4 py-3">Gang / Biz</th>
               <th className="text-right text-xs tracking-wider uppercase text-bone-muted font-medium px-4 py-3">Sale</th>
               <th className="text-right text-xs tracking-wider uppercase text-bone-muted font-medium px-4 py-3">Commission</th>
               <th className="text-left text-xs tracking-wider uppercase text-bone-muted font-medium px-4 py-3">Status</th>
@@ -375,6 +392,11 @@ export default function PortalSales() {
                       <p className="text-sm text-bone">{sale.productName}</p>
                       {sale.productSku && (
                         <p className="text-[10px] font-mono text-bone-muted">{sale.productSku}</p>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-bone">
+                      {sale.gangBusinessName || (
+                        <span className="text-bone-muted">—</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-sm text-bone text-right whitespace-nowrap">
@@ -457,7 +479,7 @@ export default function PortalSales() {
                   <button
                     key={product.id}
                     type="button"
-                    onClick={() => setSelectedProductId(product.id)}
+                    onClick={() => selectProduct(product.id)}
                     className={`w-full text-left px-3 py-2.5 transition-colors ${
                       active ? 'bg-lime/10 text-lime' : 'hover:bg-ink-raised text-bone'
                     }`}
@@ -467,7 +489,11 @@ export default function PortalSales() {
                         <p className="text-sm truncate">{product.name}</p>
                         <p className="text-[10px] text-bone-muted font-mono">
                           {product.sku}
-                          {product.salesOnly ? ' · sales only' : ''}
+                          {product.gangBizItem
+                            ? ' · gang / biz'
+                            : product.salesOnly
+                              ? ' · sales only'
+                              : ''}
                         </p>
                       </div>
                       <span className="text-xs text-bone-muted shrink-0">
@@ -479,6 +505,21 @@ export default function PortalSales() {
               })
             )}
           </div>
+
+          {needsGangName && (
+            <div>
+              <label className="block text-xs tracking-wider uppercase text-bone-muted mb-1.5">
+                Gang / Business Name
+              </label>
+              <input
+                type="text"
+                value={gangBusinessName}
+                onChange={(e) => setGangBusinessName(e.target.value)}
+                placeholder="Enter gang or business name"
+                className="portal-input"
+              />
+            </div>
+          )}
 
           {selectedProduct && (
             <p className="text-xs text-bone-muted">
@@ -499,7 +540,7 @@ export default function PortalSales() {
             <button
               type="button"
               onClick={handleLogSale}
-              disabled={!selectedProductId || submitting}
+              disabled={!selectedProductId || submitting || !gangNameReady}
               className="px-4 py-2 text-xs tracking-wider uppercase bg-lime text-ink font-medium hover:bg-lime-dark transition-colors disabled:opacity-50"
             >
               {submitting ? 'Logging...' : 'Log Sale'}
@@ -554,7 +595,7 @@ export default function PortalSales() {
                     <button
                       key={product.id}
                       type="button"
-                      onClick={() => setSelectedProductId(product.id)}
+                      onClick={() => selectProduct(product.id)}
                       className={`w-full text-left px-3 py-2.5 transition-colors ${
                         active ? 'bg-lime/10 text-lime' : 'hover:bg-ink-raised text-bone'
                       }`}
@@ -564,7 +605,11 @@ export default function PortalSales() {
                           <p className="text-sm truncate">{product.name}</p>
                           <p className="text-[10px] text-bone-muted font-mono">
                             {product.sku}
-                            {product.salesOnly ? ' · sales only' : ''}
+                            {product.gangBizItem
+                              ? ' · gang / biz'
+                              : product.salesOnly
+                                ? ' · sales only'
+                                : ''}
                           </p>
                         </div>
                         <span className="text-xs text-bone-muted shrink-0">
@@ -577,6 +622,21 @@ export default function PortalSales() {
               )}
             </div>
           </div>
+
+          {needsGangName && (
+            <div>
+              <label className="block text-xs tracking-wider uppercase text-bone-muted mb-1.5">
+                Gang / Business Name
+              </label>
+              <input
+                type="text"
+                value={gangBusinessName}
+                onChange={(e) => setGangBusinessName(e.target.value)}
+                placeholder="Enter gang or business name"
+                className="portal-input"
+              />
+            </div>
+          )}
 
           {selectedProduct && (
             <p className="text-xs text-bone-muted">
@@ -597,7 +657,7 @@ export default function PortalSales() {
             <button
               type="button"
               onClick={handleSaveEdit}
-              disabled={!selectedProductId || !selectedSoldBy || saving}
+              disabled={!selectedProductId || !selectedSoldBy || saving || !gangNameReady}
               className="px-4 py-2 text-xs tracking-wider uppercase bg-lime text-ink font-medium hover:bg-lime-dark transition-colors disabled:opacity-50"
             >
               {saving ? 'Saving...' : 'Save'}

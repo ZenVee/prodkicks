@@ -238,7 +238,9 @@ export default function PortalProducts() {
                 <td className="px-4 py-2.5">
                   <div className="flex flex-col gap-0.5">
                     <span className={`text-xs capitalize ${statusColors[p.status]}`}>{p.status}</span>
-                    {p.salesOnly ? (
+                    {p.gangBizItem ? (
+                      <span className="text-[10px] uppercase tracking-wider text-bone-muted">Gang / Biz</span>
+                    ) : p.salesOnly ? (
                       <span className="text-[10px] uppercase tracking-wider text-bone-muted">Sales only</span>
                     ) : null}
                   </div>
@@ -276,7 +278,9 @@ export default function PortalProducts() {
                   <span className="text-sm text-lime">{formatPrice(p.price, p.currency)}</span>
                   <span className="text-right">
                     <span className={`block text-xs capitalize ${statusColors[p.status]}`}>{p.status}</span>
-                    {p.salesOnly ? (
+                    {p.gangBizItem ? (
+                      <span className="block text-[10px] uppercase tracking-wider text-bone-muted">Gang / Biz</span>
+                    ) : p.salesOnly ? (
                       <span className="block text-[10px] uppercase tracking-wider text-bone-muted">Sales only</span>
                     ) : null}
                   </span>
