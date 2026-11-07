@@ -236,7 +236,12 @@ export default function PortalProducts() {
                 <td className="px-4 py-2.5 text-xs text-bone-muted capitalize">{p.category}</td>
                 <td className="px-4 py-2.5 text-sm text-lime">{formatPrice(p.price, p.currency)}</td>
                 <td className="px-4 py-2.5">
-                  <span className={`text-xs capitalize ${statusColors[p.status]}`}>{p.status}</span>
+                  <div className="flex flex-col gap-0.5">
+                    <span className={`text-xs capitalize ${statusColors[p.status]}`}>{p.status}</span>
+                    {p.salesOnly ? (
+                      <span className="text-[10px] uppercase tracking-wider text-bone-muted">Sales only</span>
+                    ) : null}
+                  </div>
                 </td>
                 <td className="px-4 py-2.5 text-xs text-bone-muted">{formatRelativeTime(p.updatedAt)}</td>
                 <td className="px-4 py-2.5 text-right">
@@ -267,9 +272,14 @@ export default function PortalProducts() {
               <div className="flex-1 min-w-0">
                 <Link to={`/portal/products/${p.id}/edit`} className="text-sm text-bone hover:text-lime">{p.name}</Link>
                 <p className="text-xs text-bone-muted mt-0.5">{p.sku} · {p.category}</p>
-                <div className="flex items-center justify-between mt-2">
+                <div className="flex items-center justify-between mt-2 gap-2">
                   <span className="text-sm text-lime">{formatPrice(p.price, p.currency)}</span>
-                  <span className={`text-xs capitalize ${statusColors[p.status]}`}>{p.status}</span>
+                  <span className="text-right">
+                    <span className={`block text-xs capitalize ${statusColors[p.status]}`}>{p.status}</span>
+                    {p.salesOnly ? (
+                      <span className="block text-[10px] uppercase tracking-wider text-bone-muted">Sales only</span>
+                    ) : null}
+                  </span>
                 </div>
                 <div className="mt-3">
                   <ProductActions

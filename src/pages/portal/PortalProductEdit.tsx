@@ -52,6 +52,7 @@ export default function PortalProductEdit() {
     color: '',
     description: '',
     status: 'draft',
+    salesOnly: false,
     availability: 'available',
     labels: [],
     collectionId: null,
@@ -195,6 +196,11 @@ export default function PortalProductEdit() {
             >
               {statusLabel}
             </span>
+            {product.salesOnly ? (
+              <span className="text-[10px] tracking-wider uppercase px-2 py-1 border border-white/15 text-bone-muted">
+                Sales only
+              </span>
+            ) : null}
           </div>
           {!isNew && product.name ? (
             <p className="text-sm text-bone-muted mt-1 truncate">{product.name}</p>
@@ -202,15 +208,17 @@ export default function PortalProductEdit() {
         </div>
 
         <div className="hidden sm:flex items-center gap-2 shrink-0">
-          <Link
-            to={previewHref}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-2 px-3 py-2 text-xs tracking-wider uppercase border border-white/10 text-bone-muted hover:text-bone hover:border-white/20 transition-colors"
-          >
-            <Eye size={14} />
-            Preview
-          </Link>
+          {!product.salesOnly ? (
+            <Link
+              to={previewHref}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 px-3 py-2 text-xs tracking-wider uppercase border border-white/10 text-bone-muted hover:text-bone hover:border-white/20 transition-colors"
+            >
+              <Eye size={14} />
+              Preview
+            </Link>
+          ) : null}
           <button
             type="button"
             onClick={() => handleSave(false)}
@@ -480,6 +488,22 @@ export default function PortalProductEdit() {
                 ))}
               </select>
             </Field>
+            <label className="mt-4 flex items-start gap-3 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={product.salesOnly ?? false}
+                onChange={(e) => update('salesOnly', e.target.checked)}
+                className="mt-0.5 accent-lime"
+              />
+              <span>
+                <span className="block text-sm text-bone group-hover:text-white transition-colors">
+                  Sales only
+                </span>
+                <span className="block text-xs text-bone-muted mt-0.5 leading-snug">
+                  Hide from the storefront. Still available for logging sales in the portal.
+                </span>
+              </span>
+            </label>
             <Field label="Stock status" className="mt-4">
               <select
                 value={product.availability ?? 'available'}
@@ -552,15 +576,17 @@ export default function PortalProductEdit() {
 
       {/* Mobile sticky actions */}
       <div className="sm:hidden fixed inset-x-0 bottom-0 z-20 border-t border-white/10 bg-ink/95 backdrop-blur px-4 py-3 flex gap-2">
-        <Link
-          to={previewHref}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center justify-center px-3 py-3 border border-white/10 text-bone-muted"
-          aria-label="Preview"
-        >
-          <Eye size={16} />
-        </Link>
+        {!product.salesOnly ? (
+          <Link
+            to={previewHref}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center justify-center px-3 py-3 border border-white/10 text-bone-muted"
+            aria-label="Preview"
+          >
+            <Eye size={16} />
+          </Link>
+        ) : null}
         <button
           type="button"
           onClick={() => handleSave(false)}

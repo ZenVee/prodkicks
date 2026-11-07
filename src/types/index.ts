@@ -45,6 +45,8 @@ export interface Product {
   color: string;
   description: string;
   status: ProductStatus;
+  /** When true, product is hidden from the storefront and used only for portal sales tracking. */
+  salesOnly: boolean;
   availability: ProductAvailability;
   labels: ProductLabel[];
   collectionId: string | null;

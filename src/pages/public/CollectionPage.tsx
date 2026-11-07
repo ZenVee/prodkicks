@@ -19,7 +19,7 @@ export default function CollectionPage() {
       setCollection(col);
       if (col) {
         const colProducts = await productService.getByCollection(col.id);
-        setProducts(colProducts.filter((p) => p.status === 'published'));
+        setProducts(colProducts.filter((p) => p.status === 'published' && !p.salesOnly));
       }
       setLoading(false);
     });

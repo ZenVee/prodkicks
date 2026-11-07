@@ -465,7 +465,10 @@ export default function PortalSales() {
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-sm truncate">{product.name}</p>
-                        <p className="text-[10px] text-bone-muted font-mono">{product.sku}</p>
+                        <p className="text-[10px] text-bone-muted font-mono">
+                          {product.sku}
+                          {product.salesOnly ? ' · sales only' : ''}
+                        </p>
                       </div>
                       <span className="text-xs text-bone-muted shrink-0">
                         {formatPrice(product.price, currency)}
@@ -559,7 +562,10 @@ export default function PortalSales() {
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
                           <p className="text-sm truncate">{product.name}</p>
-                          <p className="text-[10px] text-bone-muted font-mono">{product.sku}</p>
+                          <p className="text-[10px] text-bone-muted font-mono">
+                            {product.sku}
+                            {product.salesOnly ? ' · sales only' : ''}
+                          </p>
                         </div>
                         <span className="text-xs text-bone-muted shrink-0">
                           {formatPrice(product.price, currency)}

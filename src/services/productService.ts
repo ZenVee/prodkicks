@@ -47,6 +47,7 @@ function fromRow(row: ProductRow): Product {
     color: row.color,
     description: row.description,
     status: row.status as Product['status'],
+    salesOnly: row.sales_only ?? false,
     availability: row.availability as Product['availability'],
     labels: (row.labels ?? []) as Product['labels'],
     collectionId: row.collection_id,
@@ -69,6 +70,7 @@ function toInsert(data: Partial<Product>, id: string): Database['public']['Table
     color: data.color ?? 'Default',
     description: data.description ?? '',
     status: data.status ?? 'draft',
+    sales_only: data.salesOnly ?? false,
     availability: data.availability ?? 'available',
     labels: data.labels ?? [],
     collection_id: data.collectionId ?? null,
@@ -88,6 +90,7 @@ function toUpdate(data: Partial<Product>): Database['public']['Tables']['product
   if (data.color !== undefined) update.color = data.color;
   if (data.description !== undefined) update.description = data.description;
   if (data.status !== undefined) update.status = data.status;
+  if (data.salesOnly !== undefined) update.sales_only = data.salesOnly;
   if (data.availability !== undefined) update.availability = data.availability;
   if (data.labels !== undefined) update.labels = data.labels;
   if (data.collectionId !== undefined) update.collection_id = data.collectionId;
@@ -114,8 +117,20 @@ export const productService = {
   },
 
   async getBySlug(slug: string): Promise<Product | null> {
-    if (!isSupabaseConfigured) return localProducts.find((p) => p.slug === slug) ?? null;
-    const { data, error } = await getSupabase().from('products').select('*').eq('slug', slug).maybeSingle();
+    if (!isSupabaseConfigured) {
+      return (
+        localProducts.find(
+          (p) => p.slug === slug && p.status === 'published' && !p.salesOnly
+        ) ?? null
+      );
+    }
+    const { data, error } = await getSupabase()
+      .from('products')
+      .select('*')
+      .eq('slug', slug)
+      .eq('status', 'published')
+      .eq('sales_only', false)
+      .maybeSingle();
     if (error) throw mapSupabaseError(error);
     return data ? fromRow(data) : null;
   },
@@ -139,8 +154,14 @@ export const productService = {
   },
 
   async getPublished(): Promise<Product[]> {
-    if (!isSupabaseConfigured) return localProducts.filter((p) => p.status === 'published');
-    const { data, error } = await getSupabase().from('products').select('*').eq('status', 'published');
+    if (!isSupabaseConfigured) {
+      return localProducts.filter((p) => p.status === 'published' && !p.salesOnly);
+    }
+    const { data, error } = await getSupabase()
+      .from('products')
+      .select('*')
+      .eq('status', 'published')
+      .eq('sales_only', false);
     if (error) throw mapSupabaseError(error);
     return (data ?? []).map(fromRow);
   },
@@ -210,6 +231,7 @@ export const productService = {
         color: data.color ?? 'Default',
         description: data.description ?? '',
         status: data.status ?? 'draft',
+        salesOnly: data.salesOnly ?? false,
         availability: data.availability ?? 'available',
         labels: data.labels ?? [],
         collectionId: data.collectionId ?? null,

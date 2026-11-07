@@ -172,6 +172,7 @@ export type Database = {
           color: string;
           description: string;
           status: string;
+          sales_only: boolean;
           availability: string;
           labels: string[];
           collection_id: string | null;
@@ -191,6 +192,7 @@ export type Database = {
           color?: string;
           description?: string;
           status?: string;
+          sales_only?: boolean;
           availability?: string;
           labels?: string[];
           collection_id?: string | null;
@@ -210,6 +212,7 @@ export type Database = {
           color?: string;
           description?: string;
           status?: string;
+          sales_only?: boolean;
           availability?: string;
           labels?: string[];
           collection_id?: string | null;

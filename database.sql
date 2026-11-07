@@ -99,6 +99,7 @@ create table public.products (
   color text not null default '',
   description text not null default '',
   status text not null default 'draft',
+  sales_only boolean not null default false,
   availability text not null default 'available',
   labels text[] not null default '{}',
   collection_id text references public.collections (id) on delete set null,
@@ -1832,8 +1833,14 @@ create policy collections_public_select on public.collections
 create policy products_public_select on public.products
   for select to anon, authenticated
   using (
-    (auth.uid() is null and status = 'published')
-    or (auth.uid() is not null and (status = 'published' or public.has_permission('products.view')))
+    (auth.uid() is null and status = 'published' and sales_only = false)
+    or (
+      auth.uid() is not null
+      and (
+        (status = 'published' and sales_only = false)
+        or public.has_permission('products.view')
+      )
+    )
   );
 
 create policy drops_public_select on public.drops

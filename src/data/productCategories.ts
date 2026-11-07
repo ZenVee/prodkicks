@@ -26,6 +26,7 @@ export const PRODUCT_CATEGORY_ICONS: ProductCategoryIconOption[] = [
   // Accessories
   { value: 'watch', label: 'Watch', group: 'accessories', keywords: ['timepiece', 'wrist'] },
   { value: 'glasses', label: 'Glasses', group: 'accessories', keywords: ['eyewear', 'sunglasses', 'shades'] },
+  { value: 'mask', label: 'Mask', group: 'accessories', keywords: ['face', 'balaclava', 'cover', 'ski'] },
   { value: 'gem', label: 'Gem', group: 'accessories', keywords: ['jewelry', 'jewel', 'ring'] },
   { value: 'bag', label: 'Bag', group: 'accessories', keywords: ['tote', 'purse', 'handbag'] },
   { value: 'backpack', label: 'Backpack', group: 'accessories', keywords: ['pack', 'bag', 'daypack'] },

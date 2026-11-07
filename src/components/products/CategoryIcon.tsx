@@ -126,6 +126,17 @@ function SocksIcon(props: IconProps) {
   );
 }
 
+function MaskIcon(props: IconProps) {
+  return (
+    <svg {...strokeProps(props)}>
+      <path d="M4 10c0-2 2.5-4 8-4s8 2 8 4v3c0 3.5-3.5 6-8 6s-8-2.5-8-6v-3z" />
+      <path d="M4 11.5h16" />
+      <path d="M8 14.5h2" />
+      <path d="M14 14.5h2" />
+    </svg>
+  );
+}
+
 const lucideMap: Record<string, LucideIcon> = {
   shirt: Shirt,
   undershirt: Layers,
@@ -169,6 +180,7 @@ const customMap: Record<string, (props: IconProps) => ReturnType<typeof PantsIco
   dress: DressIcon,
   hoodie: HoodieIcon,
   socks: SocksIcon,
+  mask: MaskIcon,
 };
 
 export default function CategoryIcon({
