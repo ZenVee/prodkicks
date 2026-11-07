@@ -43,10 +43,16 @@ export default function PortalSales() {
   const [submitting, setSubmitting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [logQuery, setLogQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'unpaid' | 'paid'>('all');
+  const [sellerFilter, setSellerFilter] = useState('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const currency = settings.currencySymbol;
   const pct = settings.commissionPercentage;
   const canCreate = hasPermission('sales.create');
   const canProcess = hasPermission('payroll.process');
+  const canViewPayroll = hasPermission('payroll.view');
   const canEdit = hasPermission('sales.edit');
   const canDelete = hasPermission('sales.delete');
   const showActions = canEdit || canDelete;
@@ -100,6 +106,58 @@ export default function PortalSales() {
         p.category.toLowerCase().includes(q)
     );
   }, [products, productQuery]);
+
+  const sellerOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const sale of sales) {
+      if (!map.has(sale.soldBy)) {
+        map.set(sale.soldBy, sale.soldByName?.trim() || 'Unknown');
+      }
+    }
+    return [...map.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [sales]);
+
+  const filteredSales = useMemo(() => {
+    const q = logQuery.trim().toLowerCase();
+    const fromMs = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null;
+    const toMs = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : null;
+
+    return sales.filter((sale) => {
+      if (statusFilter === 'unpaid' && sale.payrollRunId != null) return false;
+      if (statusFilter === 'paid' && sale.payrollRunId == null) return false;
+      if (sellerFilter !== 'all' && sale.soldBy !== sellerFilter) return false;
+
+      if (fromMs != null || toMs != null) {
+        const soldMs = new Date(sale.soldAt).getTime();
+        if (fromMs != null && soldMs < fromMs) return false;
+        if (toMs != null && soldMs > toMs) return false;
+      }
+
+      if (!q) return true;
+      return (
+        sale.productName.toLowerCase().includes(q) ||
+        sale.productSku.toLowerCase().includes(q) ||
+        (sale.soldByName ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [sales, logQuery, statusFilter, sellerFilter, dateFrom, dateTo]);
+
+  const filtersActive =
+    logQuery.trim() !== '' ||
+    statusFilter !== 'all' ||
+    sellerFilter !== 'all' ||
+    dateFrom !== '' ||
+    dateTo !== '';
+
+  const clearFilters = () => {
+    setLogQuery('');
+    setStatusFilter('all');
+    setSellerFilter('all');
+    setDateFrom('');
+    setDateTo('');
+  };
 
   const selectedProduct = products.find((p) => p.id === selectedProductId) ?? null;
   const estimated = selectedProduct
@@ -181,6 +239,14 @@ export default function PortalSales() {
               New Sale
             </button>
           )}
+          {canViewPayroll && (
+            <Link
+              to="/portal/payroll/logs"
+              className="inline-flex items-center justify-center px-5 py-2.5 border border-white/10 text-bone text-xs font-medium tracking-wider uppercase hover:border-lime hover:text-lime transition-colors"
+            >
+              Payroll Logs
+            </Link>
+          )}
           {canProcess && (
             <Link
               to="/portal/payroll"
@@ -188,6 +254,74 @@ export default function PortalSales() {
             >
               Process Payroll
             </Link>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-ink-surface border border-white/5 mb-4 p-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="relative sm:col-span-2 lg:col-span-1">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-bone-muted" />
+            <input
+              type="search"
+              value={logQuery}
+              onChange={(e) => setLogQuery(e.target.value)}
+              placeholder="Search product or seller..."
+              className="portal-input pl-9"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as 'all' | 'unpaid' | 'paid')}
+            className="portal-input"
+            aria-label="Filter by status"
+          >
+            <option value="all">All statuses</option>
+            <option value="unpaid">Unpaid</option>
+            <option value="paid">Paid</option>
+          </select>
+          <select
+            value={sellerFilter}
+            onChange={(e) => setSellerFilter(e.target.value)}
+            className="portal-input"
+            aria-label="Filter by seller"
+          >
+            <option value="all">All sellers</option>
+            {sellerOptions.map((seller) => (
+              <option key={seller.id} value={seller.id}>
+                {seller.name}
+              </option>
+            ))}
+          </select>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="portal-input"
+            aria-label="From date"
+          />
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="portal-input"
+            aria-label="To date"
+          />
+        </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-bone-muted">
+            {loading
+              ? 'Loading...'
+              : `Showing ${filteredSales.length} of ${sales.length} sale${sales.length === 1 ? '' : 's'}`}
+          </p>
+          {filtersActive && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-xs tracking-wider uppercase text-bone-muted hover:text-lime transition-colors"
+            >
+              Clear filters
+            </button>
           )}
         </div>
       </div>
@@ -222,8 +356,14 @@ export default function PortalSales() {
                   No sales logged yet
                 </td>
               </tr>
+            ) : filteredSales.length === 0 ? (
+              <tr>
+                <td colSpan={colSpan} className="text-center text-sm text-bone-muted py-12">
+                  No sales match these filters
+                </td>
+              </tr>
             ) : (
-              sales.map((sale) => {
+              filteredSales.map((sale) => {
                 const unpaid = sale.payrollRunId == null;
                 return (
                   <tr key={sale.id} className="border-b border-white/5">

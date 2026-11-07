@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import type { UnpaidPayrollEmployee } from '@/types';
 import { commissionService } from '@/services/commissionService';
 import { useToast } from '@/hooks/useToast';
+import { useAuth } from '@/hooks/useAuth';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { formatPrice } from '@/utils/format';
 import { mapSupabaseError } from '@/utils/errors';
@@ -20,8 +21,10 @@ function formatSoldAt(iso: string): string {
 
 export default function PortalPayroll() {
   const { showToast } = useToast();
+  const { hasPermission } = useAuth();
   const { settings } = useSiteSettings();
   const navigate = useNavigate();
+  const canViewLogs = hasPermission('payroll.view');
   const [employees, setEmployees] = useState<UnpaidPayrollEmployee[]>([]);
   const [bonuses, setBonuses] = useState<Record<string, BonusDraft>>({});
   const [loading, setLoading] = useState(true);
@@ -94,16 +97,26 @@ export default function PortalPayroll() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="mb-8">
-        <Link to="/portal/sales" className="text-xs tracking-wider uppercase text-bone-muted hover:text-bone">
-          ← Sales
-        </Link>
-        <h1 className="font-display text-3xl lg:text-4xl tracking-tighter text-bone mt-3 mb-1">
-          Process Payroll
-        </h1>
-        <p className="text-sm text-bone-muted">
-          Confirm unpaid sales since the last payroll run, optionally add bonuses, then process.
-        </p>
+      <div className="mb-8 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+        <div>
+          <Link to="/portal/sales" className="text-xs tracking-wider uppercase text-bone-muted hover:text-bone">
+            ← Sales
+          </Link>
+          <h1 className="font-display text-3xl lg:text-4xl tracking-tighter text-bone mt-3 mb-1">
+            Process Payroll
+          </h1>
+          <p className="text-sm text-bone-muted">
+            Confirm unpaid sales since the last payroll run, optionally add bonuses, then process.
+          </p>
+        </div>
+        {canViewLogs && (
+          <Link
+            to="/portal/payroll/logs"
+            className="inline-flex items-center justify-center px-5 py-2.5 border border-white/10 text-bone text-xs font-medium tracking-wider uppercase hover:border-lime hover:text-lime transition-colors"
+          >
+            Payroll Logs
+          </Link>
+        )}
       </div>
 
       {loading ? (

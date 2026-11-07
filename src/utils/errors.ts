@@ -25,10 +25,11 @@ export function mapSupabaseError(error: unknown, fallback = 'Something went wron
   }
   if (
     lower.includes("don't have permission") ||
-    lower.includes('permission') ||
+    lower.includes('missing permission') ||
     lower.includes('42501') ||
     lower.includes('row-level security') ||
-    lower.includes('rls')
+    lower.includes('rls') ||
+    lower.includes('permission denied')
   ) {
     return new AppError("You don't have permission to perform this action.");
   }

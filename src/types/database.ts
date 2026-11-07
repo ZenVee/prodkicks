@@ -459,16 +459,25 @@ export type Database = {
           id: string;
           processed_by: string;
           processed_at: string;
+          snapshot: Json;
+          reversed_at: string | null;
+          reversed_by: string | null;
         };
         Insert: {
           id?: string;
           processed_by: string;
           processed_at?: string;
+          snapshot?: Json;
+          reversed_at?: string | null;
+          reversed_by?: string | null;
         };
         Update: {
           id?: string;
           processed_by?: string;
           processed_at?: string;
+          snapshot?: Json;
+          reversed_at?: string | null;
+          reversed_by?: string | null;
         };
         Relationships: [];
       };
@@ -553,6 +562,10 @@ export type Database = {
         Args: { p_bonuses?: Json };
         Returns: Database['public']['Tables']['payroll_runs']['Row'];
       };
+      reverse_payroll: {
+        Args: { p_run_id: string };
+        Returns: Database['public']['Tables']['payroll_runs']['Row'];
+      };
       list_sales_assignees: {
         Args: Record<string, never>;
         Returns: { id: string; full_name: string | null; discord_username: string | null }[];
@@ -591,9 +604,9 @@ export type Database = {
       };
       set_role_permission: {
         Args: {
-          target_role_id: string;
-          permission_key: string;
-          enabled: boolean;
+          p_target_role_id: string;
+          p_permission_key: string;
+          p_enabled: boolean;
         };
         Returns: undefined;
       };

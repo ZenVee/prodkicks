@@ -150,7 +150,9 @@ export type Permission =
   | 'sales.edit'
   | 'sales.view'
   | 'sales.delete'
-  | 'payroll.process';
+  | 'payroll.view'
+  | 'payroll.process'
+  | 'payroll.reverse';
 
 export interface SalesAssignee {
   id: string;
@@ -184,6 +186,45 @@ export interface UnpaidPayrollEmployee {
   staffName: string | null;
   sales: CommissionSale[];
   commissionTotal: number;
+}
+
+export interface PayrollLogSale {
+  id: string;
+  productName: string;
+  productSku: string;
+  salePrice: number;
+  commissionPercentage: number;
+  commissionAmount: number;
+  soldAt: string;
+}
+
+export interface PayrollLogEmployee {
+  staffAccountId: string;
+  staffName: string;
+  commissionTotal: number;
+  bonusAmount: number;
+  bonusNote: string;
+  payout: number;
+  sales: PayrollLogSale[];
+}
+
+export interface PayrollLogSnapshot {
+  salesCount: number;
+  commissionTotal: number;
+  bonusTotal: number;
+  grandTotal: number;
+  employees: PayrollLogEmployee[];
+}
+
+export interface PayrollLog {
+  id: string;
+  processedBy: string;
+  processedByName: string | null;
+  processedAt: string;
+  reversedAt: string | null;
+  reversedBy: string | null;
+  reversedByName: string | null;
+  snapshot: PayrollLogSnapshot;
 }
 
 export interface StaffAccount {

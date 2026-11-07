@@ -193,7 +193,7 @@ export const authService = {
       return { account: next, permissions: [], isDeveloper: true };
     }
 
-    // Always probe DB has_permission — authoritative, works when roleKey is missing.
+    // Probe DB has_permission — authoritative when roleKey is missing / stale.
     const defs = await this.listPermissions().catch(() => [] as PermissionDefinition[]);
     if (defs.length > 0) {
       const granted: Permission[] = [];
@@ -205,19 +205,6 @@ export const authService = {
           if (data) granted.push(def.key);
         })
       );
-
-      const isDeveloper = granted.length === defs.length;
-      if (isDeveloper) {
-        return {
-          account: {
-            ...next,
-            roleKey: next.roleKey ?? 'developer',
-            roleLabel: next.roleLabel ?? 'Developer',
-          },
-          permissions: [],
-          isDeveloper: true,
-        };
-      }
 
       if (granted.length > 0) {
         return { account: next, permissions: granted, isDeveloper: false };
@@ -423,9 +410,9 @@ export const authService = {
 
   async setRolePermission(roleId: string, permissionKey: Permission, enabled: boolean): Promise<void> {
     const { error } = await getSupabase().rpc('set_role_permission', {
-      target_role_id: roleId,
-      permission_key: permissionKey,
-      enabled,
+      p_target_role_id: roleId,
+      p_permission_key: permissionKey,
+      p_enabled: enabled,
     });
     if (error) throw mapSupabaseError(error);
   },

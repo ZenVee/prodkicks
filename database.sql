@@ -165,10 +165,15 @@ create table public.site_settings (
 create table public.payroll_runs (
   id uuid primary key default gen_random_uuid(),
   processed_by uuid not null references public.staff_accounts (id),
-  processed_at timestamptz not null default now()
+  processed_at timestamptz not null default now(),
+  snapshot jsonb not null default '{}'::jsonb,
+  reversed_at timestamptz,
+  reversed_by uuid references public.staff_accounts (id)
 );
 
 create index payroll_runs_processed_at_idx on public.payroll_runs (processed_at desc);
+create index payroll_runs_reversed_at_idx on public.payroll_runs (reversed_at)
+  where reversed_at is not null;
 
 create table public.commission_sales (
   id uuid primary key default gen_random_uuid(),
@@ -262,6 +267,7 @@ set search_path = public
 as $$
 declare
   acct public.staff_accounts%rowtype;
+  role_key text;
 begin
   if auth.uid() is null or requested_permission is null then
     return false;
@@ -272,8 +278,12 @@ begin
     return false;
   end if;
 
-  if public.staff_role_is_developer(acct.role_id) then
-    return exists (select 1 from public.permissions p where p.key = requested_permission);
+  select sr.key into role_key
+  from public.staff_roles sr
+  where sr.id = acct.role_id;
+
+  if role_key = 'developer' then
+    return true;
   end if;
 
   if acct.role_id is null then
@@ -341,6 +351,27 @@ begin
   where sa.id = auth.uid();
   return result;
 end;
+$$;
+
+create or replace function public.current_staff_role_info()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select case
+    when sr.id is null then null
+    else jsonb_build_object(
+      'id', sr.id,
+      'key', sr.key,
+      'label', sr.label,
+      'is_system', sr.is_system
+    )
+  end
+  from public.staff_accounts sa
+  left join public.staff_roles sr on sr.id = sa.role_id
+  where sa.id = auth.uid();
 $$;
 
 create or replace function public.handle_new_auth_user()
@@ -711,10 +742,12 @@ begin
 end;
 $$;
 
+drop function if exists public.set_role_permission(uuid, text, boolean);
+
 create or replace function public.set_role_permission(
-  target_role_id uuid,
-  permission_key text,
-  enabled boolean
+  p_target_role_id uuid,
+  p_permission_key text,
+  p_enabled boolean
 )
 returns void
 language plpgsql
@@ -723,34 +756,39 @@ set search_path = public
 as $$
 declare
   actor public.staff_accounts;
+  actor_key text;
   target_key text;
 begin
   actor := public.current_staff_account();
 
-  select sr.key into target_key from public.staff_roles sr where sr.id = target_role_id;
+  select sr.key into actor_key from public.staff_roles sr where sr.id = actor.role_id;
+  select sr.key into target_key from public.staff_roles sr where sr.id = p_target_role_id;
 
   if actor.status is distinct from 'approved'
-    or not public.has_permission('permissions.manage')
     or target_key is null
     or target_key = 'developer'
-    or not exists (select 1 from public.permissions p where p.key = permission_key) then
+    or not exists (select 1 from public.permissions p where p.key = p_permission_key) then
     raise exception 'You don''t have permission to perform this action.' using errcode = '42501';
   end if;
 
-  if not public.staff_role_is_developer(actor.role_id) then
-    if permission_key = 'permissions.manage' or not public.has_permission(permission_key) then
+  if actor_key is distinct from 'developer' then
+    if not public.has_permission('permissions.manage') then
+      raise exception 'You don''t have permission to perform this action.' using errcode = '42501';
+    end if;
+
+    if p_permission_key = 'permissions.manage' or not public.has_permission(p_permission_key) then
       raise exception 'You don''t have permission to perform this action.' using errcode = '42501';
     end if;
   end if;
 
-  if enabled then
+  if p_enabled then
     insert into public.role_permissions (role_id, permission_key)
-    values (target_role_id, permission_key)
+    values (p_target_role_id, p_permission_key)
     on conflict do nothing;
   else
     delete from public.role_permissions
-    where role_id = target_role_id
-      and permission_key = set_role_permission.permission_key;
+    where role_id = p_target_role_id
+      and role_permissions.permission_key = p_permission_key;
   end if;
 
   insert into public.staff_audit_log (actor_user_id, target_user_id, action, metadata)
@@ -759,10 +797,10 @@ begin
     null,
     'permissions_changed',
     jsonb_build_object(
-      'role_id', target_role_id,
+      'role_id', p_target_role_id,
       'role', target_key,
-      'permission', permission_key,
-      'enabled', enabled
+      'permission', p_permission_key,
+      'enabled', p_enabled
     )
   );
 end;
@@ -1114,6 +1152,7 @@ declare
   bonus_amount numeric;
   bonus_note text;
   unpaid_count integer;
+  run_snapshot jsonb;
 begin
   if uid is null then
     raise exception 'Not authenticated';
@@ -1172,6 +1211,87 @@ begin
     paid_at = run.processed_at
   where payroll_run_id is null;
 
+  select coalesce(
+    jsonb_agg(employee_row order by employee_row->>'staff_name', employee_row->>'staff_account_id'),
+    '[]'::jsonb
+  )
+  into run_snapshot
+  from (
+    select jsonb_build_object(
+      'staff_account_id', staff.id,
+      'staff_name', coalesce(nullif(staff.full_name, ''), nullif(staff.discord_username, ''), 'Unknown staff'),
+      'commission_total', round(coalesce(sales.commission_total, 0), 2),
+      'bonus_amount', round(coalesce(bonuses.bonus_amount, 0), 2),
+      'bonus_note', coalesce(bonuses.bonus_note, ''),
+      'payout', round(coalesce(sales.commission_total, 0) + coalesce(bonuses.bonus_amount, 0), 2),
+      'sales', coalesce(sales.sales_json, '[]'::jsonb)
+    ) as employee_row
+    from (
+      select distinct sold_by as staff_account_id
+      from public.commission_sales
+      where payroll_run_id = run.id
+      union
+      select staff_account_id
+      from public.payroll_bonuses
+      where payroll_run_id = run.id
+    ) ids
+    join public.staff_accounts staff on staff.id = ids.staff_account_id
+    left join lateral (
+      select
+        sum(cs.commission_amount) as commission_total,
+        jsonb_agg(
+          jsonb_build_object(
+            'id', cs.id,
+            'product_name', cs.product_name,
+            'product_sku', cs.product_sku,
+            'sale_price', cs.sale_price,
+            'commission_percentage', cs.commission_percentage,
+            'commission_amount', cs.commission_amount,
+            'sold_at', cs.sold_at
+          )
+          order by cs.sold_at
+        ) as sales_json
+      from public.commission_sales cs
+      where cs.payroll_run_id = run.id
+        and cs.sold_by = staff.id
+    ) sales on true
+    left join lateral (
+      select
+        sum(pb.amount) as bonus_amount,
+        string_agg(nullif(pb.note, ''), '; ' order by pb.id) as bonus_note
+      from public.payroll_bonuses pb
+      where pb.payroll_run_id = run.id
+        and pb.staff_account_id = staff.id
+    ) bonuses on true
+  ) employees;
+
+  update public.payroll_runs
+  set snapshot = jsonb_build_object(
+    'sales_count', unpaid_count,
+    'commission_total', coalesce((
+      select round(sum(commission_amount), 2)
+      from public.commission_sales
+      where payroll_run_id = run.id
+    ), 0),
+    'bonus_total', coalesce((
+      select round(sum(amount), 2)
+      from public.payroll_bonuses
+      where payroll_run_id = run.id
+    ), 0),
+    'grand_total', coalesce((
+      select round(sum(commission_amount), 2)
+      from public.commission_sales
+      where payroll_run_id = run.id
+    ), 0) + coalesce((
+      select round(sum(amount), 2)
+      from public.payroll_bonuses
+      where payroll_run_id = run.id
+    ), 0),
+    'employees', run_snapshot
+  )
+  where id = run.id
+  returning * into run;
+
   insert into public.staff_audit_log (actor_user_id, action, metadata)
   values (
     uid,
@@ -1179,7 +1299,79 @@ begin
     jsonb_build_object(
       'payroll_run_id', run.id,
       'sales_count', unpaid_count,
-      'bonuses', p_bonuses
+      'bonuses', p_bonuses,
+      'grand_total', run.snapshot->>'grand_total'
+    )
+  );
+
+  return run;
+end;
+$$;
+
+create or replace function public.reverse_payroll(p_run_id uuid)
+returns public.payroll_runs
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid := auth.uid();
+  run public.payroll_runs%rowtype;
+  sales_count integer;
+begin
+  if uid is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  if not public.has_permission('payroll.reverse') then
+    raise exception 'Missing permission: payroll.reverse';
+  end if;
+
+  if p_run_id is null then
+    raise exception 'Payroll run id is required';
+  end if;
+
+  select * into run
+  from public.payroll_runs
+  where id = p_run_id
+  for update;
+
+  if not found then
+    raise exception 'Payroll run not found';
+  end if;
+
+  if run.reversed_at is not null then
+    raise exception 'Payroll run already reversed';
+  end if;
+
+  select count(*) into sales_count
+  from public.commission_sales
+  where payroll_run_id = run.id;
+
+  update public.commission_sales
+  set
+    payroll_run_id = null,
+    paid_at = null
+  where payroll_run_id = run.id;
+
+  delete from public.payroll_bonuses
+  where payroll_run_id = run.id;
+
+  update public.payroll_runs
+  set
+    reversed_at = now(),
+    reversed_by = uid
+  where id = run.id
+  returning * into run;
+
+  insert into public.staff_audit_log (actor_user_id, action, metadata)
+  values (
+    uid,
+    'payroll.reversed',
+    jsonb_build_object(
+      'payroll_run_id', run.id,
+      'sales_count', sales_count,
+      'grand_total', coalesce(run.snapshot->>'grand_total', '0')
     )
   );
 
@@ -1738,7 +1930,9 @@ create policy commission_sales_select
   to authenticated
   using (
     public.has_permission('sales.view')
+    or public.has_permission('payroll.view')
     or public.has_permission('payroll.process')
+    or public.has_permission('payroll.reverse')
     or sold_by = auth.uid()
   );
 
@@ -1746,13 +1940,21 @@ create policy payroll_runs_select
   on public.payroll_runs
   for select
   to authenticated
-  using (public.has_permission('payroll.process'));
+  using (
+    public.has_permission('payroll.view')
+    or public.has_permission('payroll.process')
+    or public.has_permission('payroll.reverse')
+  );
 
 create policy payroll_bonuses_select
   on public.payroll_bonuses
   for select
   to authenticated
-  using (public.has_permission('payroll.process'));
+  using (
+    public.has_permission('payroll.view')
+    or public.has_permission('payroll.process')
+    or public.has_permission('payroll.reverse')
+  );
 
 create policy articles_public_select on public.articles
   for select to anon, authenticated
@@ -1837,11 +2039,17 @@ grant execute on function public.current_staff_role_key() to authenticated;
 revoke all on function public.current_staff_role() from public, anon, authenticated;
 grant execute on function public.current_staff_role() to authenticated;
 
+revoke all on function public.current_staff_role_info() from public, anon, authenticated;
+grant execute on function public.current_staff_role_info() to authenticated;
+
 revoke all on function public.log_commission_sale(text) from public, anon, authenticated;
 grant execute on function public.log_commission_sale(text) to authenticated;
 
 revoke all on function public.process_payroll(jsonb) from public, anon, authenticated;
 grant execute on function public.process_payroll(jsonb) to authenticated;
+
+revoke all on function public.reverse_payroll(uuid) from public, anon, authenticated;
+grant execute on function public.reverse_payroll(uuid) to authenticated;
 
 revoke all on function public.list_sales_assignees() from public, anon, authenticated;
 grant execute on function public.list_sales_assignees() to authenticated;
@@ -1923,7 +2131,9 @@ insert into public.permissions (key, category, label, sort_order) values
   ('sales.edit', 'Sales', 'Edit sales', 825),
   ('sales.view', 'Sales', 'View sales log', 830),
   ('sales.delete', 'Sales', 'Delete sales', 835),
-  ('payroll.process', 'Payroll', 'Process payroll', 840);
+  ('payroll.view', 'Payroll', 'View payroll logs', 838),
+  ('payroll.process', 'Payroll', 'Process payroll', 840),
+  ('payroll.reverse', 'Payroll', 'Reverse payroll', 845);
 
 insert into public.staff_roles (key, label, is_system, sort_order) values
   ('developer', 'Developer', true, 0),
@@ -1959,7 +2169,8 @@ where sr.key = 'manager'
     'settings.view',
     'accounts.view', 'accounts.approve', 'accounts.decline',
     'magazine.view', 'magazine.create', 'magazine.edit', 'magazine.delete', 'magazine.publish',
-    'sales.create', 'sales.edit', 'sales.view', 'sales.delete', 'payroll.process'
+    'sales.create', 'sales.edit', 'sales.view', 'sales.delete',
+    'payroll.view', 'payroll.process', 'payroll.reverse'
   );
 
 insert into public.role_permissions (role_id, permission_key)
