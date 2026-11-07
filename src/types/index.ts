@@ -275,6 +275,7 @@ export interface PermissionDefinition {
   key: Permission;
   category: string;
   label: string;
+  description: string;
   sortOrder: number;
 }
 

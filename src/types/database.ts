@@ -99,18 +99,21 @@ export type Database = {
           key: string;
           category: string;
           label: string;
+          description: string;
           sort_order: number;
         };
         Insert: {
           key: string;
           category: string;
           label: string;
+          description?: string;
           sort_order?: number;
         };
         Update: {
           key?: string;
           category?: string;
           label?: string;
+          description?: string;
           sort_order?: number;
         };
         Relationships: [];

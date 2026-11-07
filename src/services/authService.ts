@@ -395,6 +395,7 @@ export const authService = {
       key: row.key as Permission,
       category: row.category,
       label: row.label,
+      description: row.description ?? '',
       sortOrder: row.sort_order,
     }));
   },

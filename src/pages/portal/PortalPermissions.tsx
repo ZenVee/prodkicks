@@ -79,7 +79,8 @@ export default function PortalPermissions() {
       (d) =>
         d.label.toLowerCase().includes(q) ||
         d.key.toLowerCase().includes(q) ||
-        d.category.toLowerCase().includes(q)
+        d.category.toLowerCase().includes(q) ||
+        d.description.toLowerCase().includes(q)
     );
   }, [defs, query]);
 
@@ -384,7 +385,12 @@ export default function PortalPermissions() {
                                       <span className="block text-sm text-bone group-hover:text-white transition-colors">
                                         {item.label}
                                       </span>
-                                      <span className="block text-[10px] font-mono text-bone-muted mt-0.5">
+                                      {item.description ? (
+                                        <span className="block text-xs text-bone-muted mt-0.5 leading-snug">
+                                          {item.description}
+                                        </span>
+                                      ) : null}
+                                      <span className="block text-[10px] font-mono text-bone-muted/70 mt-0.5">
                                         {item.key}
                                       </span>
                                     </span>
